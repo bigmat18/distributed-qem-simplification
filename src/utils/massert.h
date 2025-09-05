@@ -73,7 +73,7 @@ private:
         ::Assert::Check((condition), #condition, message, std::source_location::current())
 #else 
     #pragma message("Asserts are not availble")
-    #define ASSERT(condition, message)
+    #define ASSERT(condition, message) condition
 #endif // !NDEBUG
 
 #endif // !MASSERT_H
