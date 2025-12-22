@@ -7,3 +7,6 @@
 [submodule "libs/cxxopts"]
 	path = libs/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
+[submodule "libs/cpp-utils-lib"]
+	path = libs/cpp-utils-lib
+	url = https://github.com/bigmat18/cpp-utils-lib.git

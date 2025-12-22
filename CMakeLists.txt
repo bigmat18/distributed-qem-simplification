@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.26)
 project(DistributedMeshSimplification CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -11,14 +11,15 @@ set(SRC_DIR "src")
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
 
-add_subdirectory("${LIBS_DIR}/eigen")
-add_subdirectory("${LIBS_DIR}/cxxopts")
+add_subdirectory(${LIBS_DIR}/cpp-utils-lib)
+add_subdirectory(${LIBS_DIR}/eigen)
+add_subdirectory(${LIBS_DIR}/cxxopts)
 
 set(OPENMESH_BUILD_APPS OFF CACHE BOOL "" FORCE)
 set(OPENMESH_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LIBS_DIR}/OpenMesh")
 
-file(GLOB_RECURSE CPP_FILES "${SRC_DIR}/*.cpp")
+file(GLOB_RECURSE CPP_FILES ${SRC_DIR}/*.cpp)
 
 function(configure_exe_target target_name)
   target_include_directories(${target_name}
@@ -37,6 +38,7 @@ function(configure_exe_target target_name)
       OpenMP::OpenMP_CXX
       MPI::MPI_CXX
       stdc++exp
+      cpp-utils-lib
   )
 
   target_compile_options(${target_name} PUBLIC 

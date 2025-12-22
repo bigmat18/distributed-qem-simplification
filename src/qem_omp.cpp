@@ -1,20 +1,14 @@
 #include "OpenMesh/Core/Mesh/Handles.hh"
-#include "utils/profiling.h"
 #include <cstdint>
 #include <cxxopts.hpp>
-#include <iostream>
-#include <iterator>
-#include <mutex>
-#include <ostream>
-#include <queue>
 #include <unistd.h>
-
-#include <utils/utils.h>
-#include <utils/mesh.h>
+#include <queue>
+#include <utils.hpp>
+#include "mesh.h"
 
 
 int main(int argc, char **argv) {
-    ASSERT(argc > 1, "Need [input file]");
+    massert(argc > 1, "Need [input file]");
 
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
@@ -29,12 +23,12 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    ASSERT(result.count("filename") >= 1, "Need [input filename]");
+    massert(result.count("filename") >= 1, "Need [input filename]");
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
 
     Mesh mesh;
-    ASSERT(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+    massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
     LOG_INFO("%s successfully imported", FILENAME.c_str());
     mesh.request_vertex_status();
     mesh.request_edge_status();
@@ -174,7 +168,7 @@ int main(int argc, char **argv) {
 
     PROFILING_PRINT();
     LOG_DEBUG("Mesh vertices: %lu, edges: %lu, faces: %lu", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
-    ASSERT(OpenMesh::IO::write_mesh(mesh, "out/out.obj"), "Error in mesh export!");
+    massert(OpenMesh::IO::write_mesh(mesh, "out/out.obj"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
 
     return 0;
