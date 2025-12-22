@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <queue>
 #include <utils.hpp>
+#include "logging.hpp"
 #include "mesh.h"
 
 
@@ -29,13 +30,12 @@ int main(int argc, char **argv) {
 
     Mesh mesh;
     massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
-    LOG_INFO("%s successfully imported", FILENAME.c_str());
+    LOG_INFO("{} successfully imported", FILENAME.c_str());
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
 
-    
     auto cmp = [&](const Mesh::EdgeHandle& e1, const Mesh::EdgeHandle& e2) {
         return mesh.data(e1).Error > mesh.data(e2).Error;
     };
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
             {
                 PROFILING_SCOPE("Init-Vertices-Quadratic");
                 #pragma omp parallel for 
-                for (int i = 0; i < mesh.n_vertices(); ++i) {
+                for (size_t i = 0; i < mesh.n_vertices(); ++i) {
                     const auto vh = Mesh::VertexHandle(i);
                     mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
                 }
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
             {
                 PROFILING_SCOPE("Init-Edges-Quadric");
                 #pragma omp parallel for
-                for (int i = 0; i < mesh.n_edges(); ++i) {
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
                     auto eh = Mesh::EdgeHandle(i);
                     auto heh = mesh.halfedge_handle(eh, 0);
                     auto v0 = mesh.from_vertex_handle(heh);
@@ -133,13 +133,13 @@ int main(int argc, char **argv) {
                     } 
 
                     #pragma omp parallel for
-                    for (int i = 0; i < vertices.size(); ++i) {
+                    for (size_t i = 0; i < vertices.size(); ++i) {
                         auto vh = vertices[i];
                         mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
                     }
 
                     #pragma omp parallel for
-                    for (int i = 0; i < edges.size(); ++i) {
+                    for (size_t i = 0; i < edges.size(); ++i) {
                         auto eh = edges[i];
                         auto he0 = mesh.halfedge_handle(eh, 0);
                         auto v0 = mesh.from_vertex_handle(he0);
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
     }
 
     PROFILING_PRINT();
-    LOG_DEBUG("Mesh vertices: %lu, edges: %lu, faces: %lu", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
+    LOG_DEBUG("Mesh vertices: %lu, edges: {}, faces: {}", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
     massert(OpenMesh::IO::write_mesh(mesh, "out/out.obj"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
 

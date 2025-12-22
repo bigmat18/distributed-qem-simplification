@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 
     Mesh mesh;
     massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
-    LOG_INFO("%s successfully imported", FILENAME.c_str());
+    LOG_INFO("{} successfully imported", FILENAME.c_str());
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    LOG_DEBUG("Mesh vertices: %lu, edges: %lu, faces: %lu", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
+    LOG_DEBUG("Mesh vertices: {}, edges: {}, faces: {}", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
     massert(OpenMesh::IO::write_mesh(mesh, "out/out.obj"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
 

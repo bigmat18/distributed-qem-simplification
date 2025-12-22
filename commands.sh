@@ -1,5 +1,7 @@
 #!/bin/bash
 
+FLAGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
 all() {
     set -e
 
@@ -11,7 +13,7 @@ all() {
     for TYPE in "${BUILD_TYPES[@]}"; do
         DIR="$ROOT_DIR/$TYPE"
         echo "==> Configuring $TYPE in $DIR"
-        cmake -B "$DIR" -DCMAKE_BUILD_TYPE=$TYPE .
+        cmake -B "$DIR" -DCMAKE_BUILD_TYPE=$TYPE . ${FLAGS}
     done
     
     cd build
@@ -20,15 +22,15 @@ all() {
 }
 
 debug() {
-    cmake --build build/Debug -- -j
+    cmake --build build/Debug -- -j 
 }
 
 release() {
-    cmake --build build/Release -- -j   
+    cmake --build build/Release -- -j 
 }
 
 reldeb() {
-    cmake --build build/RelWithDebInfo -- -j
+    cmake --build build/RelWithDebInfo -- -j 
 }
 
 clean() {
