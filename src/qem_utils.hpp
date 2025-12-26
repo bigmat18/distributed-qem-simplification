@@ -1,22 +1,10 @@
-#ifndef MESH_H
-#define MESH_H
-
+#pragma once
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <Eigen/Dense>
+#include <qem_mesh.hpp>
 
-struct Traits : public OpenMesh::DefaultTraits {
-    VertexTraits { 
-        Eigen::Matrix4d Quadric; 
-    };
-
-    EdgeTraits { 
-        double Error;
-        Eigen::Vector4d NewVertex;
-    };
-};
-
-using Mesh = OpenMesh::TriMesh_ArrayKernelT<Traits>;
+using Mesh = QEMMesh;
 
 inline bool CompareMeshEdge(const Mesh& mesh, const Mesh::EdgeHandle& e1, const Mesh::EdgeHandle& e2) {
     return mesh.data(e1).Error > mesh.data(e2).Error;
@@ -98,4 +86,3 @@ inline Eigen::Vector4d EvaluateNewBestVertex(const Mesh& mesh,
     }
 }
 
-#endif
