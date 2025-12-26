@@ -1,9 +1,12 @@
 #pragma once
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+#include <OpenMesh/Core/IO/Options.hh>
 #include <Eigen/Dense>
 
 struct Traits : public OpenMesh::DefaultTraits {
+    VertexAttributes(OpenMesh::Attributes::Color);
+
     VertexTraits { 
         Eigen::Matrix4d Quadric; 
     };

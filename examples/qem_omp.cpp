@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
 
     PROFILING_PRINT();
     LOG_DEBUG("Mesh vertices: %lu, edges: {}, faces: {}", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
-    massert(OpenMesh::IO::write_mesh(mesh, "out/out.obj"), "Error in mesh export!");
+    massert(OpenMesh::IO::write_mesh(mesh, "out/out.ply"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
 
     return 0;

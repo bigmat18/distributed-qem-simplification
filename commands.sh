@@ -22,15 +22,15 @@ all() {
 }
 
 debug() {
-    cmake --build build/Debug -- -j 
+    cmake --build build/Debug --verbose -- -j 
 }
 
 release() {
-    cmake --build build/Release -- -j 
+    cmake --build build/Release --verbose -- -j 
 }
 
 reldeb() {
-    cmake --build build/RelWithDebInfo -- -j 
+    cmake --build build/RelWithDebInfo --verbose -- -j 
 }
 
 clean() {

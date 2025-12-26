@@ -1,4 +1,5 @@
 #pragma once
+#include "profiling.hpp"
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <Eigen/Dense>
@@ -85,4 +86,29 @@ inline Eigen::Vector4d EvaluateNewBestVertex(const Mesh& mesh,
         else                            return mid;
     }
 }
+
+inline void ComputeBoundingBox(const Mesh& mesh, Eigen::Vector3f& min, Eigen::Vector3f& max) {
+    PROFILING_SCOPE("Compute Bounding Box");
+    min = Eigen::Vector3f(std::numeric_limits<float>::max(),
+                          std::numeric_limits<float>::max(),
+                          std::numeric_limits<float>::max());
+    
+    max = Eigen::Vector3f(std::numeric_limits<float>::lowest(),
+                          std::numeric_limits<float>::lowest(),
+                          std::numeric_limits<float>::lowest());
+    
+    for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+        const auto vh = Mesh::VertexHandle(static_cast<int>(i));
+        const auto coords = mesh.point(vh);
+    
+        if (coords[0] < min.x()) min.x() = coords[0];
+        if (coords[1] < min.y()) min.y() = coords[1];
+        if (coords[2] < min.z()) min.z() = coords[2];
+    
+        if (coords[0] > max.x()) max.x() = coords[0];
+        if (coords[1] > max.y()) max.y() = coords[1];
+        if (coords[2] > max.z()) max.z() = coords[2];
+    }
+}
+
 

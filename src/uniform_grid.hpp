@@ -6,7 +6,8 @@
 #include <vector>
 #include <qem_mesh.hpp>
 
-template <float split_num>
+
+template <uint32_t split_num>
 class UniformGrid {
     using m = QEMMesh;
 
@@ -17,7 +18,7 @@ class UniformGrid {
     };
 
     std::vector<Cell> cells_;
-    float split_ = split_num;
+    uint32_t split_ = split_num;
 
     // Bounding Box
     Eigen::Vector3f min_coords_;
@@ -27,27 +28,42 @@ class UniformGrid {
 public:
 
     UniformGrid(Eigen::Vector3f min_coords, Eigen::Vector3f max_coords) : 
-        min_coords_(min_coords), max_coords_(max_coords) {};
+        cells_(split_num * split_num * split_num), min_coords_(min_coords), max_coords_(max_coords) 
+    {};
 
-    size_t add_vertex(const m& mesh, m::VertexHandle vtx, const bool add = true) {
-        auto coords = mesh.point(vtx);
+    UniformGrid(const UniformGrid<split_num>& other) :
+        cells_(split_num * split_num * split_num)
+    {
+        min_coords_ = other.min_coords_;
+        max_coords_ = other.max_coords_;
+    }
+
+    size_t add_vertex(m& mesh, m::VertexHandle vh, const bool add = true) {
+        auto coords = mesh.point(vh);
         coords[0] -= min_coords_.x();
         coords[1] -= min_coords_.y();
         coords[2] -= min_coords_.z();
 
         Eigen::Vector3f block_size = (max_coords_ - min_coords_) / split_;
-        size_t x = static_cast<size_t>(std::floor(coords[0] / block_size.x()));
-        size_t y = static_cast<size_t>(std::floor(coords[0] / block_size.y()));
-        size_t z = static_cast<size_t>(std::floor(coords[0] / block_size.z()));
+        size_t x = std::min(static_cast<size_t>(std::floor(coords[0] / block_size.x())), static_cast<size_t>(split_ - 1));
+        size_t y = std::min(static_cast<size_t>(std::floor(coords[1] / block_size.y())), static_cast<size_t>(split_ - 1));
+        size_t z = std::min(static_cast<size_t>(std::floor(coords[2] / block_size.z())), static_cast<size_t>(split_ - 1));
         size_t index = x + (y * split_) + (z * split_ * split_);
 
-        if (add)
-            cells_[index].vertices.push_back(vtx);
+        if (add) {
+            cells_[index].vertices.push_back(vh);
+            mesh.set_color(
+                vh,
+                m::Color(
+                    static_cast<unsigned char>(x * ((256 / split_) - 1)),
+                    static_cast<unsigned char>(y * ((256 / split_) - 1)),
+                    static_cast<unsigned char>(z * ((256 / split_) - 1))));
+        }
 
         return index;
     }
 
-    void add_edge(const m& mesh, m::EdgeHandle eh) {
+    void add_edge(m& mesh, m::EdgeHandle eh) {
         auto heh = mesh.halfedge_handle(eh);
         auto vh1 = mesh.from_vertex_handle(heh);
         auto vh2 = mesh.to_vertex_handle(heh);
@@ -62,7 +78,7 @@ public:
     void add_face(m& mesh, m::FaceHandle fh) {
         std::array<m::VertexHandle, 3> vhs;
         int i = 0;
-        for (auto fv_iter = mesh.fv_iter(fh); fv_iter.is_valid(); fv_iter++, i++) {
+        for (auto fv_iter = mesh.fv_iter(fh); fv_iter.is_valid(); fv_iter++) {
             auto vh = *fv_iter;
             vhs[i++] = vh;
         }
@@ -78,5 +94,27 @@ public:
 
         if (idx1 != idx3 && idx2 != idx3)
             cells_[idx3].faces.push_back(fh);
+    }
+
+    void merge(const UniformGrid<split_num>& mesh) {
+        for (int i = 0; i < cells_.size(); ++i) {
+            cells_[i].vertices.insert(
+                cells_[i].vertices.end(),
+                mesh.cells_[i].vertices.begin(),
+                mesh.cells_[i].vertices.end()
+            );
+
+            cells_[i].edges.insert(
+                cells_[i].edges.end(),
+                mesh.cells_[i].edges.begin(),
+                mesh.cells_[i].edges.end()
+            );
+ 
+            cells_[i].faces.insert(
+                cells_[i].faces.end(),
+                mesh.cells_[i].faces.begin(),
+                mesh.cells_[i].faces.end()
+            );
+        }
     }
 };

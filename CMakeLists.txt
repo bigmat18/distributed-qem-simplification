@@ -12,13 +12,16 @@ set(EXAMPLE_DIR "examples")
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
 
+option(CPPUTILS_BUILD_EXAMPLES "CPPUtils build examples" OFF)
+option(CPPUTILS_USE_OPENMP "CPPUtils enable OpenMP" ON)
+set(OPENMESH_BUILD_APPS OFF CACHE BOOL "" FORCE)
+set(OPENMESH_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(${LIBS_DIR}/cpp-utils-lib)
 add_subdirectory(${LIBS_DIR}/eigen)
 add_subdirectory(${LIBS_DIR}/cxxopts)
+add_subdirectory(${LIBS_DIR}/OpenMesh)
 
-set(OPENMESH_BUILD_APPS OFF CACHE BOOL "" FORCE)
-set(OPENMESH_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${LIBS_DIR}/OpenMesh")
 
 file(GLOB_RECURSE CPP_FILES ${SRC_DIR}/*.cpp)
 file(GLOB_RECURSE EXAMPLES_FILES ${EXAMPLE_DIR}/*.cpp)
@@ -27,9 +30,9 @@ function(configure_exe_target target_name)
     target_include_directories(${target_name}
         PUBLIC
             ${SRC_DIR}
-            ${LIBS_DIR}/eigen
             ${LIBS_DIR}/cxxopts/include
         SYSTEM
+            ${LIBS_DIR}/eigen
             ${LIBS_DIR}/OpenMesh/src
     )
 
@@ -43,14 +46,13 @@ function(configure_exe_target target_name)
             cpp-utils-lib
     )
 
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target_name} PRIVATE
-            -enable-libstdcxx-backtrace=yes
-            -Wno-deprecated-enum-enum-conversion
-            -Wno-unused-result
-            -Wno-deprecated-declarations
-        )
-    endif()
+    target_compile_options(${target_name} PRIVATE
+        -enable-libstdcxx-backtrace=yes
+        -Wno-deprecated-enum-enum-conversion
+        -Wno-unused-result
+        -Wno-deprecated-declarations
+        -gdwarf-4
+    )
 endfunction()
 
 foreach(file IN LISTS EXAMPLES_FILES)
