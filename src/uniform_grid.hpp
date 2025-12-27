@@ -1,20 +1,24 @@
 #pragma once 
 
+#include "qem_utils.hpp"
 #include <Eigen/Dense>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <tuple>
 #include <vector>
 #include <qem_mesh.hpp>
+    
 
 
 template <uint32_t split_num>
 class UniformGrid {
     using m = QEMMesh;
+    using Vec4ui = Eigen::Matrix<uint32_t, 4, 1>;
 
     struct Cell {
         std::vector<m::VertexHandle> vertices;
         std::vector<m::EdgeHandle> edges;
-        std::vector<m::FaceHandle> faces;
     };
 
     std::vector<Cell> cells_;
@@ -38,7 +42,7 @@ public:
         max_coords_ = other.max_coords_;
     }
 
-    size_t add_vertex(m& mesh, m::VertexHandle vh, const bool add = true) {
+    Vec4ui get_vertex_indices(const m& mesh, m::VertexHandle vh) {
         auto coords = mesh.point(vh);
         coords[0] -= min_coords_.x();
         coords[1] -= min_coords_.y();
@@ -50,51 +54,31 @@ public:
         size_t z = std::min(static_cast<size_t>(std::floor(coords[2] / block_size.z())), static_cast<size_t>(split_ - 1));
         size_t index = x + (y * split_) + (z * split_ * split_);
 
-        if (add) {
-            cells_[index].vertices.push_back(vh);
-            mesh.set_color(
-                vh,
-                m::Color(
-                    static_cast<unsigned char>(x * ((256 / split_) - 1)),
-                    static_cast<unsigned char>(y * ((256 / split_) - 1)),
-                    static_cast<unsigned char>(z * ((256 / split_) - 1))));
-        }
+        return Vec4ui(x, y, z, index);
+    }
 
-        return index;
+    void add_vertex(m& mesh, m::VertexHandle vh) {
+        auto indices = get_vertex_indices(mesh, vh);
+
+        cells_[indices.w()].vertices.push_back(vh);
+        mesh.set_color(
+            vh,
+            m::Color(
+                static_cast<unsigned char>(indices.x() * ((256 / split_) - 1)),
+                static_cast<unsigned char>(indices.y() * ((256 / split_) - 1)),
+                static_cast<unsigned char>(indices.z() * ((256 / split_) - 1))));
     }
 
     void add_edge(m& mesh, m::EdgeHandle eh) {
         auto heh = mesh.halfedge_handle(eh);
         auto vh1 = mesh.from_vertex_handle(heh);
         auto vh2 = mesh.to_vertex_handle(heh);
-        size_t idx1 = add_vertex(mesh, vh1, false);
-        size_t idx2 = add_vertex(mesh, vh2, false);
-
-        cells_[idx1].edges.push_back(eh);
-        if (idx1 != idx2)
-            cells_[idx2].edges.push_back(eh);
-    }
- 
-    void add_face(m& mesh, m::FaceHandle fh) {
-        std::array<m::VertexHandle, 3> vhs;
-        int i = 0;
-        for (auto fv_iter = mesh.fv_iter(fh); fv_iter.is_valid(); fv_iter++) {
-            auto vh = *fv_iter;
-            vhs[i++] = vh;
-        }
-
-        size_t idx1 = add_vertex(mesh, vhs[0], false);
-        size_t idx2 = add_vertex(mesh, vhs[1], false);
-        size_t idx3 = add_vertex(mesh, vhs[2], false);
-        
-        cells_[idx1].faces.push_back(fh);
-
-        if (idx1 != idx2)
-            cells_[idx2].faces.push_back(fh);
-
-        if (idx1 != idx3 && idx2 != idx3)
-            cells_[idx3].faces.push_back(fh);
-    }
+        size_t idx1 = get_vertex_indices(mesh, vh1).w(); 
+        size_t idx2 = get_vertex_indices(mesh, vh2).w(); 
+            
+        if (mesh.data(vh1).Collapable && mesh.data(vh2).Collapable)
+            cells_[idx1].edges.push_back(eh);
+    } 
 
     void merge(const UniformGrid<split_num>& mesh) {
         for (int i = 0; i < cells_.size(); ++i) {
@@ -109,12 +93,10 @@ public:
                 mesh.cells_[i].edges.begin(),
                 mesh.cells_[i].edges.end()
             );
- 
-            cells_[i].faces.insert(
-                cells_[i].faces.end(),
-                mesh.cells_[i].faces.begin(),
-                mesh.cells_[i].faces.end()
-            );
         }
+    }
+
+    QEMPriorityQueue get_qem_pq(const m& mesh, size_t index) { 
+        return QEMPriorityQueue(QEMEdgeCompare(&mesh), cells_[index].edges);
     }
 };

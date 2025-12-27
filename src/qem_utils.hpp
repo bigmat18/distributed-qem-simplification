@@ -4,8 +4,25 @@
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <Eigen/Dense>
 #include <qem_mesh.hpp>
+#include <queue>
 
 using Mesh = QEMMesh;
+
+struct QEMEdgeCompare {
+    const Mesh* mesh = nullptr;
+
+    bool operator()(const Mesh::EdgeHandle& e1,
+                    const Mesh::EdgeHandle& e2) const {
+        return mesh->data(e1).Error > mesh->data(e2).Error;
+    }
+};
+
+using QEMPriorityQueue =
+    std::priority_queue<Mesh::EdgeHandle,
+                        std::vector<Mesh::EdgeHandle>,
+                        QEMEdgeCompare>;
+
+
 
 inline bool CompareMeshEdge(const Mesh& mesh, const Mesh::EdgeHandle& e1, const Mesh::EdgeHandle& e2) {
     return mesh.data(e1).Error > mesh.data(e2).Error;

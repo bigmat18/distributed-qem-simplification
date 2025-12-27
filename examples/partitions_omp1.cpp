@@ -74,12 +74,6 @@ int main(int argc, char **argv) {
                 auto eh = QEMMesh::EdgeHandle(i);
                 local_grid.add_edge(mesh, eh);
             }
-
-            #pragma omp for schedule(static)
-            for (size_t i = 0; i < mesh.n_faces(); ++i) {
-                auto fh = QEMMesh::FaceHandle(i);
-                local_grid.add_face(mesh, fh);
-            }
         }
         PROFILING_UNLOCK();
 

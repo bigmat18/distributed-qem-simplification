@@ -13,6 +13,7 @@
 #include <format_utils.hpp>
 
 using Mesh = QEMMesh;
+#define QUAD_PARTITIONS 4
 
 int main(int argc, char **argv) {
     massert(argc > 1, "Need [input file]");
@@ -53,36 +54,67 @@ int main(int argc, char **argv) {
         LOG_INFO("Bounding Box: {}, {}", min, max);
 
         #pragma omp declare reduction(                                  \
-            uniform_grid_merge : UniformGrid<2> : omp_out.merge(omp_in))\
-            initializer(omp_priv = UniformGrid<2>(omp_orig))
+            uniform_grid_merge : UniformGrid<QUAD_PARTITIONS> : omp_out.merge(omp_in))\
+            initializer(omp_priv = UniformGrid<QUAD_PARTITIONS>(omp_orig))
 
-        UniformGrid<2> uniform_grid(min, max);
+        UniformGrid<QUAD_PARTITIONS> uniform_grid(min, max);
 
         PROFILING_LOCK();
         #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
         {
             PROFILING_SCOPE("UniformGrid Building");
 
-            #pragma omp for schedule(static) nowait
-            for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-                auto vh = QEMMesh::VertexHandle(i);
-                uniform_grid.add_vertex(mesh, vh);
+            {
+                PROFILING_SCOPE("Init Vertices Quadratic");
+                #pragma omp for schedule(static) 
+                for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+                    auto vh = QEMMesh::VertexHandle(i);
+                    mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
+                    uniform_grid.add_vertex(mesh, vh);
+                }
             }
 
-            #pragma omp for schedule(static) nowait
-            for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                auto eh = QEMMesh::EdgeHandle(i);
-                uniform_grid.add_edge(mesh, eh);
+            {
+                PROFILING_SCOPE("Init Edges Quadratic");
+                #pragma omp for schedule(static)
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                    auto eh = QEMMesh::EdgeHandle(i);
+                    auto heh = mesh.halfedge_handle(eh, 0);
+                    auto vh0 = mesh.from_vertex_handle(heh);
+                    auto vh1 = mesh.to_vertex_handle(heh);
+
+                    size_t idx0 = uniform_grid.get_vertex_indices(mesh, vh0).w();
+                    size_t idx1 = uniform_grid.get_vertex_indices(mesh, vh1).w();
+
+                    if (idx0 == idx1) {
+                        Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                        Eigen::Vector4d newV = EvaluateNewBestVertex(mesh, eh, Q);
+
+                        mesh.data(eh).Error = newV.transpose() * Q * newV;
+                        mesh.data(eh).NewVertex = newV;
+                    } else {
+                        mesh.data(vh0).Collapable = false;
+                        mesh.data(vh0).Collapable = false;
+                    }
+                }
             }
 
-            #pragma omp for schedule(static)
-            for (size_t i = 0; i < mesh.n_faces(); ++i) {
-                auto fh = QEMMesh::FaceHandle(i);
-                uniform_grid.add_face(mesh, fh);
+            {
+                PROFILING_SCOPE("Set Collapsable Edges");
+                #pragma omp for schedule(static)
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                    auto eh = QEMMesh::EdgeHandle(i);
+                    uniform_grid.add_edge(mesh, eh);
+                }
             }
         }
         PROFILING_UNLOCK();
-    }
+
+        #pragma omp parallel 
+        {
+
+        }
+    }   
 
     PROFILING_PRINT();
 

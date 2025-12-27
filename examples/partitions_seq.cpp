@@ -66,11 +66,6 @@ int main(int argc, char **argv) {
                 auto eh = QEMMesh::EdgeHandle(i);
                 uniform_grid.add_edge(mesh, eh);
             }
-
-            for (size_t i = 0; i < mesh.n_faces(); ++i) {
-                auto fh = QEMMesh::FaceHandle(i);
-                uniform_grid.add_face(mesh, fh);
-            }
         }
     }
 
