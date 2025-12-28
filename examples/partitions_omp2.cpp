@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
 
             {
                 PROFILING_SCOPE("Init Edges Quadratic");
-                #pragma omp for schedule(static)
+                #pragma omp for schedule(static)  
                 for (size_t i = 0; i < mesh.n_edges(); ++i) {
                     auto eh = QEMMesh::EdgeHandle(i);
                     auto heh = mesh.halfedge_handle(eh, 0);
@@ -100,6 +100,15 @@ int main(int argc, char **argv) {
             }
 
             {
+                PROFILING_SCOPE("Count Faces per Quad");
+                #pragma omp for schedule(static)
+                for(size_t i = 0; i < mesh.n_faces(); i++) {
+                    auto fh = QEMMesh::FaceHandle(i);
+                    uniform_grid.increment_collasable_faces(mesh, fh);
+                }
+            }
+
+            {
                 PROFILING_SCOPE("Set Collapsable Edges");
                 #pragma omp for schedule(static)
                 for (size_t i = 0; i < mesh.n_edges(); ++i) {
@@ -110,9 +119,111 @@ int main(int argc, char **argv) {
         }
         PROFILING_UNLOCK();
 
-        #pragma omp parallel 
-        {
+        constexpr size_t num_cells = QUAD_PARTITIONS * QUAD_PARTITIONS * QUAD_PARTITIONS;
+        std::vector<QEMPriorityQueue> pqs(num_cells);
 
+        PROFILING_LOCK();
+        #pragma omp parallel
+        {
+            PROFILING_SCOPE("QEM Computation");
+
+            #pragma omp for schedule(static)
+            for (size_t j = 0; j < num_cells; j++) { 
+                uint32_t local_num_faces = uniform_grid.collasable_faces(j);
+                float total_faces = static_cast<float>(mesh.n_faces());
+                float cell_faces  = static_cast<float>(local_num_faces);
+                
+                float fraction = (total_faces > 0.0) ? (cell_faces / total_faces) : 0.0;
+                float target_d = static_cast<float>(TARGET_FACES) * fraction;
+                
+                uint32_t local_target = static_cast<uint32_t>(std::floor(target_d));
+
+                pqs[j] = uniform_grid.get_qem_pq(mesh, j);
+
+                uint32_t deleted_faces = 0;
+                while (local_num_faces - deleted_faces > local_target && !pqs[j].empty()) { 
+                    auto eh = pqs[j].top();
+                    pqs[j].pop();
+
+                    if (mesh.status(eh).deleted())
+                        continue;
+
+                    auto heh = mesh.halfedge_handle(eh, 0);
+
+                    if (!mesh.is_collapse_ok(heh))
+                        continue;
+
+                    auto vh0 = mesh.from_vertex_handle(heh);
+                    auto vh1 = mesh.to_vertex_handle(heh);
+
+                    if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted()) 
+                        continue;
+                        
+                    Eigen::Vector4d newVertex = mesh.data(eh).NewVertex;
+                    OpenMesh::Vec3f coords(newVertex.x(), newVertex.y(), newVertex.z());
+
+                    mesh.set_point(vh1, coords);
+                    mesh.data(vh1).Quadric = mesh.data(vh1).Quadric + mesh.data(vh0).Quadric;
+                    mesh.collapse(heh);
+
+                    std::vector<Mesh::VertexHandle> vertices;
+                    std::vector<Mesh::EdgeHandle> edges;
+
+                    for (auto vf_it = mesh.vf_iter(vh1); vf_it.is_valid(); ++vf_it) {
+                        auto fh = *vf_it;
+                        if (mesh.status(fh).deleted()) continue;
+
+                        for (auto fv_it = mesh.fv_iter(fh); fv_it.is_valid(); ++fv_it) {
+                            auto vh = *fv_it;
+                            if (mesh.status(vh).deleted() || !mesh.data(vh).Collapable) 
+                                continue;
+
+                            vertices.push_back(vh);
+                        }    
+
+                        for (auto fe_it = mesh.fe_iter(fh); fe_it.is_valid(); ++fe_it) {
+                            auto eh = *fe_it;
+
+                            auto he0 = mesh.halfedge_handle(eh, 0);
+                            auto v0 = mesh.from_vertex_handle(he0);
+                            auto v1 = mesh.to_vertex_handle(he0);
+
+                            if (mesh.status(eh).deleted() || 
+                                !mesh.data(v0).Collapable || 
+                                !mesh.data(v1).Collapable) 
+                                continue;
+
+                            edges.push_back(eh);
+                        }
+                    } 
+
+                    for (size_t i = 0; i < vertices.size(); ++i) {
+                        auto vh = vertices[i];
+                        mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
+                    }
+
+                    for (size_t i = 0; i < edges.size(); ++i) {
+                        auto eh = edges[i];
+                        auto he0 = mesh.halfedge_handle(eh, 0);
+                        auto v0 = mesh.from_vertex_handle(he0);
+                        auto v1 = mesh.to_vertex_handle(he0);
+                        if (mesh.status(v0).deleted() || mesh.status(v1).deleted()) continue;
+
+                        Eigen::Matrix4d Q = mesh.data(v0).Quadric + mesh.data(v1).Quadric;
+                        Eigen::Vector4d newV = EvaluateNewBestVertex(mesh, eh, Q);
+
+                        mesh.data(eh).Error = newV.transpose() * Q * newV;
+                        mesh.data(eh).NewVertex = newV;
+                        pqs[j].push(eh);
+                    }
+                    deleted_faces += 2 - mesh.is_boundary(eh);
+                }
+            }
+        }
+        PROFILING_UNLOCK();
+        {
+            PROFILING_SCOPE("Mesh Cleanup");
+            mesh.garbage_collection();
         }
     }   
 
@@ -121,7 +232,7 @@ int main(int argc, char **argv) {
     OpenMesh::IO::Options wopt;
     wopt += OpenMesh::IO::Options::VertexColor;
 
-    //massert(OpenMesh::IO::write_mesh(mesh, "out/out.ply", wopt), "Error in mesh export!");
-    //LOG_INFO("Mesh successfully exported!");
+    massert(OpenMesh::IO::write_mesh(mesh, "out/out.ply", wopt), "Error in mesh export!");
+    LOG_INFO("Mesh successfully exported!");
     return 0;
 } 

@@ -2,13 +2,10 @@
 
 #include "qem_utils.hpp"
 #include <Eigen/Dense>
-#include <array>
 #include <cmath>
 #include <cstddef>
-#include <tuple>
 #include <vector>
 #include <qem_mesh.hpp>
-    
 
 
 template <uint32_t split_num>
@@ -17,11 +14,13 @@ class UniformGrid {
     using Vec4ui = Eigen::Matrix<uint32_t, 4, 1>;
 
     struct Cell {
+        size_t collasable_faces = 0;
         std::vector<m::VertexHandle> vertices;
         std::vector<m::EdgeHandle> edges;
     };
 
     std::vector<Cell> cells_;
+    size_t total_collasable_faces_ = 0;
     uint32_t split_ = split_num;
 
     // Bounding Box
@@ -93,8 +92,28 @@ public:
                 mesh.cells_[i].edges.begin(),
                 mesh.cells_[i].edges.end()
             );
+
+            cells_[i].collasable_faces += mesh.cells_[i].collasable_faces;
         }
+        total_collasable_faces_ += mesh.total_collasable_faces_;
     }
+
+    void increment_collasable_faces(const m& mesh, m::FaceHandle fh) {
+        for (auto fv_it = mesh.cfv_iter(fh); fv_it.is_valid(); ++fv_it) {
+            auto vh = *fv_it;
+            if (!mesh.data(vh).Collapable)
+                return;
+        }
+
+        m::VertexHandle vh0 = *mesh.cfv_iter(fh);
+        size_t idx = get_vertex_indices(mesh, vh0).w();
+        cells_[idx].collasable_faces++;
+        total_collasable_faces_++;
+    }
+
+    inline size_t collasable_faces(size_t index) const { return cells_[index].collasable_faces; }
+
+    inline size_t total_collasable_faces() const { return total_collasable_faces_; }
 
     QEMPriorityQueue get_qem_pq(const m& mesh, size_t index) { 
         return QEMPriorityQueue(QEMEdgeCompare(&mesh), cells_[index].edges);
