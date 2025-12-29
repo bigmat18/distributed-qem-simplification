@@ -51,7 +51,6 @@ function(configure_exe_target target_name)
         -Wno-deprecated-enum-enum-conversion
         -Wno-unused-result
         -Wno-deprecated-declarations
-        -gdwarf-4
     )
 endfunction()
 

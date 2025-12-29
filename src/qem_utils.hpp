@@ -3,6 +3,7 @@
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <Eigen/Dense>
+#include <cstdint>
 #include <qem_mesh.hpp>
 #include <queue>
 
@@ -65,7 +66,8 @@ inline Eigen::Matrix4d EvaluateVertexQuadratic(Mesh& mesh,
     Eigen::Matrix4d result = Eigen::Matrix4d::Zero();
     for (auto f_it = mesh.vf_iter(vh); f_it.is_valid(); ++f_it) {
         auto fh = *f_it; 
-        result += EvaluateFacePlaneMatrix(mesh, fh);        
+        if (!mesh.status(fh).deleted())
+            result += EvaluateFacePlaneMatrix(mesh, fh);        
     }
 
     return result;
@@ -116,6 +118,9 @@ inline void ComputeBoundingBox(const Mesh& mesh, Eigen::Vector3f& min, Eigen::Ve
     
     for (size_t i = 0; i < mesh.n_vertices(); ++i) {
         const auto vh = Mesh::VertexHandle(static_cast<int>(i));
+        if (mesh.status(vh).deleted())
+            continue;
+
         const auto coords = mesh.point(vh);
     
         if (coords[0] < min.x()) min.x() = coords[0];
@@ -125,6 +130,90 @@ inline void ComputeBoundingBox(const Mesh& mesh, Eigen::Vector3f& min, Eigen::Ve
         if (coords[0] > max.x()) max.x() = coords[0];
         if (coords[1] > max.y()) max.y() = coords[1];
         if (coords[2] > max.z()) max.z() = coords[2];
+    }
+}
+
+inline void ComputeQEMSimplification(Mesh& mesh, 
+                                     uint32_t target, 
+                                     uint32_t num_faces, 
+                                     QEMPriorityQueue& pq) {
+    uint32_t deleted_faces = 0;
+    while (num_faces - deleted_faces > target && !pq.empty()) { 
+        auto eh = pq.top();
+        pq.pop();
+
+        if (mesh.status(eh).deleted())
+            continue;
+
+        auto heh = mesh.halfedge_handle(eh, 0);
+
+        if (!mesh.is_collapse_ok(heh))
+            continue;
+
+        auto vh0 = mesh.from_vertex_handle(heh);
+        auto vh1 = mesh.to_vertex_handle(heh);
+
+        if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted()) 
+            continue;
+
+        Eigen::Vector4d newVertex = mesh.data(eh).NewVertex;
+        OpenMesh::Vec3f coords(newVertex.x(), newVertex.y(), newVertex.z());
+
+        mesh.set_point(vh1, coords);
+        mesh.data(vh1).Quadric = mesh.data(vh1).Quadric + mesh.data(vh0).Quadric;
+        mesh.collapse(heh);
+
+        std::vector<Mesh::VertexHandle> vertices;
+        std::vector<Mesh::EdgeHandle> edges;
+
+        for (auto vf_it = mesh.vf_iter(vh1); vf_it.is_valid(); ++vf_it) {
+            auto fh = *vf_it;
+            if (mesh.status(fh).deleted()) continue;
+
+            for (auto fv_it = mesh.fv_iter(fh); fv_it.is_valid(); ++fv_it) {
+                auto vh = *fv_it;
+                if (mesh.status(vh).deleted() || !mesh.data(vh).Collapable) 
+                    continue;
+
+                vertices.push_back(vh);
+            }    
+
+            for (auto fe_it = mesh.fe_iter(fh); fe_it.is_valid(); ++fe_it) {
+                auto eh = *fe_it;
+
+                auto he0 = mesh.halfedge_handle(eh, 0);
+                auto v0 = mesh.from_vertex_handle(he0);
+                auto v1 = mesh.to_vertex_handle(he0);
+
+                if (mesh.status(eh).deleted() || 
+                    !mesh.data(v0).Collapable || 
+                    !mesh.data(v1).Collapable) 
+                    continue;
+
+                edges.push_back(eh);
+            }
+        } 
+
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            auto vh = vertices[i];
+            mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
+        }
+
+        for (size_t i = 0; i < edges.size(); ++i) {
+            auto eh = edges[i];
+            auto he0 = mesh.halfedge_handle(eh, 0);
+            auto v0 = mesh.from_vertex_handle(he0);
+            auto v1 = mesh.to_vertex_handle(he0);
+            if (mesh.status(v0).deleted() || mesh.status(v1).deleted()) continue;
+
+            Eigen::Matrix4d Q = mesh.data(v0).Quadric + mesh.data(v1).Quadric;
+            Eigen::Vector4d newV = EvaluateNewBestVertex(mesh, eh, Q);
+
+            mesh.data(eh).Error = newV.transpose() * Q * newV;
+            mesh.data(eh).NewVertex = newV;
+            pq.push(eh);
+        }
+        deleted_faces += 2 - mesh.is_boundary(eh);
     }
 }
 

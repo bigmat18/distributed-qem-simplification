@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     > pq(cmp);
 
     {
-        PROFILING_SCOPE("CSG");
+        PROFILING_SCOPE("QEM");
 
         {
             PROFILING_SCOPE("Inizialization");

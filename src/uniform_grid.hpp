@@ -118,4 +118,5 @@ public:
     QEMPriorityQueue get_qem_pq(const m& mesh, size_t index) { 
         return QEMPriorityQueue(QEMEdgeCompare(&mesh), cells_[index].edges);
     }
+
 };
