@@ -72,11 +72,11 @@ public:
         auto heh = mesh.halfedge_handle(eh);
         auto vh1 = mesh.from_vertex_handle(heh);
         auto vh2 = mesh.to_vertex_handle(heh);
-        size_t idx1 = get_vertex_indices(mesh, vh1).w(); 
-        size_t idx2 = get_vertex_indices(mesh, vh2).w(); 
             
-        if (mesh.data(vh1).Collapable && mesh.data(vh2).Collapable)
-            cells_[idx1].edges.push_back(eh);
+        if (mesh.data(vh1).Collasable && mesh.data(vh2).Collasable) {
+            size_t idx = get_vertex_indices(mesh, vh1).w(); 
+            cells_[idx].edges.push_back(eh);
+        }
     } 
 
     void merge(const UniformGrid<split_num>& mesh) {
@@ -101,7 +101,7 @@ public:
     void increment_collasable_faces(const m& mesh, m::FaceHandle fh) {
         for (auto fv_it = mesh.cfv_iter(fh); fv_it.is_valid(); ++fv_it) {
             auto vh = *fv_it;
-            if (!mesh.data(vh).Collapable)
+            if (!mesh.data(vh).Collasable)
                 return;
         }
 

@@ -91,8 +91,8 @@ int main(int argc, char **argv) {
                         mesh.data(eh).Error = newV.transpose() * Q * newV;
                         mesh.data(eh).NewVertex = newV;
                     } else {
-                        mesh.data(vh0).Collapable = false;
-                        mesh.data(vh0).Collapable = false;
+                        mesh.data(vh0).Collasable = false;
+                        mesh.data(vh0).Collasable = false;
                     }
                 }
             }

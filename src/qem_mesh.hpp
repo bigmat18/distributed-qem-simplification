@@ -3,12 +3,14 @@
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include <OpenMesh/Core/IO/Options.hh>
 #include <Eigen/Dense>
+#include <cstddef>
 
 struct Traits : public OpenMesh::DefaultTraits {
     VertexAttributes(OpenMesh::Attributes::Color);
 
     VertexTraits { 
-        bool Collapable = true;
+        bool Collasable = true;
+        std::size_t NodeIdx = -1;
         Eigen::Matrix4d Quadric; 
     };
 
