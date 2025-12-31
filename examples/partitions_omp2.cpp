@@ -98,6 +98,15 @@ int main(int argc, char **argv) {
             }
 
             {
+                PROFILING_SCOPE("Set Collapsable Edges");
+                #pragma omp for schedule(static)
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                    auto eh = QEMMesh::EdgeHandle(i);
+                    uniform_grid.add_edge(mesh, eh);
+                }
+            }
+
+            {
                 PROFILING_SCOPE("Count Faces per Quad");
                 #pragma omp for schedule(static)
                 for(size_t i = 0; i < mesh.n_faces(); i++) {
@@ -106,14 +115,6 @@ int main(int argc, char **argv) {
                 }
             }
 
-            {
-                PROFILING_SCOPE("Set Collapsable Edges");
-                #pragma omp for schedule(static)
-                for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                    auto eh = QEMMesh::EdgeHandle(i);
-                    uniform_grid.add_edge(mesh, eh);
-                }
-            }
         }
         PROFILING_UNLOCK();
 
