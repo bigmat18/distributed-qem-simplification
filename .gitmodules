@@ -1,12 +1,14 @@
-[submodule "libs/OpenMesh"]
-	path = libs/OpenMesh
-	url = https://gitlab.vci.rwth-aachen.de:9000/OpenMesh/OpenMesh.git
-[submodule "libs/eigen"]
-	path = libs/eigen
-	url = https://github.com/PX4/eigen.git
-[submodule "libs/cxxopts"]
-	path = libs/cxxopts
+[submodule "external/cxxopts"]
+	path = external/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
-[submodule "libs/cpp-utils-lib"]
-	path = libs/cpp-utils-lib
+	branch = v2_2
+[submodule "external/eigen"]
+	path = external/eigen
+	url = https://github.com/PX4/eigen.git
+	branch = 3.4
+[submodule "external/OpenMesh"]
+	path = external/OpenMesh
+	url = https://gitlab.vci.rwth-aachen.de:9000/OpenMesh/OpenMesh.git
+[submodule "external/cpp-utils-lib"]
+	path = external/cpp-utils-lib
 	url = https://github.com/bigmat18/cpp-utils-lib.git

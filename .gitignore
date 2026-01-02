@@ -46,3 +46,5 @@ build/
 tests/
 .venv/
 out/
+legacy/
+stanford/
