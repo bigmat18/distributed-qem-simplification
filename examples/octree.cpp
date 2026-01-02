@@ -1,8 +1,8 @@
-#include "logging.hpp"
 #include "profiling.hpp"
-#include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <cxxopts.hpp>
+#include <omp.h>
 #include <unistd.h>
 #include <utils.hpp>
 
@@ -10,13 +10,9 @@
 #include <qem_utils.hpp>
 #include <uniform_grid.hpp>
 #include <format_utils.hpp>
-
-using Mesh = QEMMesh;
-#define QUAD_PARTITIONS 4 
+#include <octree.hpp>
 
 int main(int argc, char **argv) {
-    massert(argc > 1, "Need [input file]");
-
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,filename", "Input filename list", cxxopts::value<std::string>())
@@ -42,38 +38,38 @@ int main(int argc, char **argv) {
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
-    
 
+   
     {
-        PROFILING_SCOPE("Computation");
+        PROFILING_SCOPE("QEM Simplification");
+
         Eigen::Vector3f min;
         Eigen::Vector3f max;
-
         ComputeBoundingBox(mesh, min, max); 
 
+        uint32_t limit = static_cast<uint32_t>(std::floor(mesh.n_vertices() / omp_get_num_threads()));
+        Octree ot(min, max, limit);
         #pragma omp declare reduction(                                  \
-            uniform_grid_merge : UniformGrid<QUAD_PARTITIONS> : omp_out.merge(omp_in))\
-            initializer(omp_priv = UniformGrid<QUAD_PARTITIONS>(omp_orig))
-
-        UniformGrid<QUAD_PARTITIONS> uniform_grid(min, max);
+            octree_merge : Octree : omp_out.merge(omp_in))              \
+            initializer(omp_priv = Octree(omp_orig))
 
         PROFILING_LOCK();
-        #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
+        #pragma omp parallel reduction(octree_merge : ot)
         {
-            PROFILING_SCOPE("UniformGrid Building");
+            PROFILING_SCOPE("Octree-Initialization");
 
             {
-                PROFILING_SCOPE("Init Vertices Quadratic");
+                PROFILING_SCOPE("Init-Vertices-QEM");
                 #pragma omp for schedule(static) 
                 for (size_t i = 0; i < mesh.n_vertices(); ++i) {
                     auto vh = QEMMesh::VertexHandle(i);
                     mesh.data(vh).Quadric = EvaluateVertexQuadratic(mesh, vh);
-                    uniform_grid.add_vertex(mesh, vh);
+                    ot.add_vertex(mesh, vh);
                 }
             }
 
             {
-                PROFILING_SCOPE("Init Edges Quadratic");
+                PROFILING_SCOPE("Init-Edges-QEM");
                 #pragma omp for schedule(static)  
                 for (size_t i = 0; i < mesh.n_edges(); ++i) {
                     auto eh = QEMMesh::EdgeHandle(i);
@@ -81,8 +77,8 @@ int main(int argc, char **argv) {
                     auto vh0 = mesh.from_vertex_handle(heh);
                     auto vh1 = mesh.to_vertex_handle(heh);
 
-                    size_t idx0 = uniform_grid.get_vertex_indices(mesh, vh0).w();
-                    size_t idx1 = uniform_grid.get_vertex_indices(mesh, vh1).w();
+                    size_t idx0 = ot.get_vertex_indices(mesh, vh0, max, min).w();
+                    size_t idx1 = ot.get_vertex_indices(mesh, vh1, max, min).w();
 
                     if (idx0 == idx1) {
                         Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
@@ -98,61 +94,65 @@ int main(int argc, char **argv) {
             }
 
             {
-                PROFILING_SCOPE("Set Collapsable Edges");
+                PROFILING_SCOPE("Set-Collapsable-Edges");
                 #pragma omp for schedule(static)
                 for (size_t i = 0; i < mesh.n_edges(); ++i) {
                     auto eh = QEMMesh::EdgeHandle(i);
-                    uniform_grid.add_edge(mesh, eh);
+                    ot.add_edge(mesh, eh);
                 }
             }
 
             {
-                PROFILING_SCOPE("Count Faces per Quad");
+                PROFILING_SCOPE("Set-Collapsable-Face-Count");
                 #pragma omp for schedule(static)
                 for(size_t i = 0; i < mesh.n_faces(); i++) {
                     auto fh = QEMMesh::FaceHandle(i);
-                    uniform_grid.increment_collasable_faces(mesh, fh);
+                    ot.increment_collasable_faces(mesh, fh);
                 }
             }
 
         }
         PROFILING_UNLOCK();
 
-        constexpr size_t num_cells = QUAD_PARTITIONS * QUAD_PARTITIONS * QUAD_PARTITIONS;
-        std::vector<QEMPriorityQueue> pqs(num_cells);
-
+        ot.normalize(mesh);
+        auto tree = ot.get_nodes();
+ 
         PROFILING_LOCK();
         #pragma omp parallel
         {
-            PROFILING_SCOPE("QEM");
+            PROFILING_SCOPE("Parallel-Simplification");
 
             #pragma omp for schedule(static)
-            for (size_t j = 0; j < num_cells; j++) { 
-                uint32_t local_num_faces = uniform_grid.collasable_faces(j);
-                float total_faces = static_cast<float>(uniform_grid.total_collasable_faces());
+            for (size_t j = 0; j < tree.size(); j++) { 
+                if (!tree[j].is_leaf)
+                    continue;
+
+                auto& node = tree[j];
+                uint32_t local_num_faces = node.collasable_faces;
+                float total_faces = static_cast<float>(ot.total_collasable_faces());
                 float cell_faces  = static_cast<float>(local_num_faces);
                 
                 float fraction = (total_faces > 0.0) ? (cell_faces / total_faces) : 0.0;
                 float target_d = static_cast<float>(TARGET_FACES) * fraction;
                 
                 uint32_t local_target = static_cast<uint32_t>(std::floor(target_d));
+                QEMPriorityQueue pq(QEMEdgeCompare(&mesh), node.edges);
 
-                pqs[j] = uniform_grid.get_qem_pq(mesh, j);
-                ComputeQEMSimplification(mesh, local_target, local_num_faces, pqs[j]);
+                ComputeQEMSimplification(mesh, local_target, local_num_faces, pq);
             }
         }
         PROFILING_UNLOCK();
 
         {
-            PROFILING_SCOPE("Mesh Cleanup");
+            PROFILING_SCOPE("Mesh-Cleanup");
             mesh.garbage_collection();
         }
 
         {
-            PROFILING_SCOPE("QEM Refinements");
+            PROFILING_SCOPE("QEM-Refinements");
             std::vector<QEMMesh::EdgeHandle> elements;
             {
-                PROFILING_SCOPE("Init Vertices Quadratic");
+                PROFILING_SCOPE("Init-Vertices-QEM");
                 #pragma omp for schedule(static) 
                 for (size_t i = 0; i < mesh.n_vertices(); ++i) {
                     auto vh = QEMMesh::VertexHandle(i);
@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
             }
 
             {
-                PROFILING_SCOPE("Init Edges Quadratic");
+                PROFILING_SCOPE("Init-Edges-QEM");
                 #pragma omp for schedule(static)  
                 for (size_t i = 0; i < mesh.n_edges(); ++i) {
                     auto eh = QEMMesh::EdgeHandle(i);
@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
                 }
             }
             {
-                PROFILING_SCOPE("QEM Computation");
+                PROFILING_SCOPE("Sequential-Simplification");
                 QEMPriorityQueue pq(QEMEdgeCompare(&mesh), std::move(elements));
                 ComputeQEMSimplification(mesh, TARGET_FACES, mesh.n_faces(), pq);
             }
@@ -189,14 +189,9 @@ int main(int argc, char **argv) {
             mesh.garbage_collection();
         }
 
-    }   
-
+    }
     PROFILING_PRINT();
-
-    OpenMesh::IO::Options wopt;
-    wopt += OpenMesh::IO::Options::VertexColor;
-
-    massert(OpenMesh::IO::write_mesh(mesh, "out/qem_um.ply", wopt), "Error in mesh export!");
+    massert(OpenMesh::IO::write_mesh(mesh, "out/qem_octree.ply"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
-    return 0;
-} 
+    return 0; 
+}

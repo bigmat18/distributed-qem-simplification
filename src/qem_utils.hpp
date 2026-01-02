@@ -172,7 +172,7 @@ inline void ComputeQEMSimplification(Mesh& mesh,
 
             for (auto fv_it = mesh.fv_iter(fh); fv_it.is_valid(); ++fv_it) {
                 auto vh = *fv_it;
-                if (mesh.status(vh).deleted() || !mesh.data(vh).Collapable) 
+                if (mesh.status(vh).deleted() || !mesh.data(vh).Collasable) 
                     continue;
 
                 vertices.push_back(vh);
@@ -186,8 +186,8 @@ inline void ComputeQEMSimplification(Mesh& mesh,
                 auto v1 = mesh.to_vertex_handle(he0);
 
                 if (mesh.status(eh).deleted() || 
-                    !mesh.data(v0).Collapable || 
-                    !mesh.data(v1).Collapable) 
+                    !mesh.data(v0).Collasable || 
+                    !mesh.data(v1).Collasable) 
                     continue;
 
                 edges.push_back(eh);

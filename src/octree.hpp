@@ -4,10 +4,12 @@
 #include <cstddef>
 #include <Eigen/Dense>
 #include <cstdint>
+#include <filesystem>
 #include <strings.h>
 #include <vector>
 
 #include "Eigen/src/Core/Matrix.h"
+#include "OpenMesh/Core/Mesh/TriMeshT.hh"
 #include "massert.hpp"
 #include "profiling.hpp"
 #include "qem_mesh.hpp"
@@ -34,6 +36,7 @@ class Octree {
 
     std::vector<Node> tree_;
     std::size_t limit_;
+    uint32_t total_collasable_faces_ = 0;
 
 public:
     Octree(Eigen::Vector3f min_coords, Eigen::Vector3f max_coords, size_t limit) :
@@ -107,16 +110,14 @@ public:
     }
 
     void increment_collasable_faces(const Mesh& mesh, const Mesh::FaceHandle fh) {
-        for (Mesh::ConstFaceVertexIter fv_it = mesh.cfv_iter(fh);
-             fv_it->is_valid(); ++fv_it) 
-        {
-            auto vh = *fv_it;
+        for (const auto& vh : mesh.fv_range(fh)) {
             if (!mesh.data(vh).Collasable)
                 return;
         }
 
         auto vh = *mesh.cfv_iter(fh);
         tree_[mesh.data(vh).NodeIdx].collasable_faces++;
+        total_collasable_faces_++;
     }
 
     void merge(const Octree& other) {
@@ -141,17 +142,22 @@ public:
 
             tree_[i].collasable_faces += other.tree_[i].collasable_faces;
         }
+        total_collasable_faces_ += other.total_collasable_faces_;
     }
 
     void normalize(Mesh& mesh) {
         PROFILING_SCOPE("Octree-Normalize");
 
+        PROFILING_LOCK();
         {
             PROFILING_SCOPE("Reset-Collasable-Faces");
             #pragma omp parallel for schedule(static)
             for(auto& node : tree_) 
                 node.collasable_faces = 0;
         }
+        PROFILING_UNLOCK();
+
+        total_collasable_faces_ = 0;
 
         for (int i = 0; i < tree_.size(); i++) {
             if (!tree_[i].is_leaf)
@@ -161,10 +167,12 @@ public:
                 split(mesh, i);
         }
 
+        PROFILING_LOCK();
         #pragma omp parallel
         {
             PROFILING_SCOPE("Calculate-Collasable-Faces");
 
+            uint32_t local_total_collasable_faces = 0;
             std::vector<uint32_t> local_faces_count(tree_.size(), 0);
 
             #pragma omp for schedule(static) nowait
@@ -172,16 +180,13 @@ public:
                 auto fh = QEMMesh::FaceHandle(i);
 
                 bool collasable = true; 
-                for (Mesh::ConstFaceVertexIter fv_it = mesh.cfv_iter(fh);
-                     fv_it->is_valid(); ++fv_it) 
-                {
-                    auto vh = *fv_it;
+                for (const auto& vh : mesh.fv_range(fh))
                     collasable &= mesh.data(vh).Collasable;
-                }
 
                 if (collasable) {
                     auto vh = *mesh.cfv_iter(fh);
                     local_faces_count[mesh.data(vh).NodeIdx]++;
+                    local_total_collasable_faces++;
                 }
 
             }
@@ -190,14 +195,102 @@ public:
                 if (local_faces_count[i] != 0) {
                     #pragma omp atomic
                     tree_[i].collasable_faces += local_faces_count[i];
+
+                    #pragma omp atomic
+                    total_collasable_faces_ += local_total_collasable_faces;
                 }
             }
         }
+        PROFILING_UNLOCK();
+    }
+
+    void save(const std::filesystem::path path) {
+        QEMMesh mesh;
+        mesh.request_face_normals();
+        mesh.request_vertex_normals();
+        mesh.clear();
+
+
+        for (const auto& node : tree_) {
+            if (!node.is_leaf)
+                continue;
+
+            std::array<Eigen::Vector3f, 8> V;
+            const float xmin = node.min_coords.x(), ymin = node.min_coords.y(), zmin = node.min_coords.z();
+            const float xmax = node.max_coords.x(), ymax = node.max_coords.y(), zmax = node.max_coords.z();
+
+            V[0] = {xmin, ymin, zmin};
+            V[1] = {xmax, ymin, zmin};
+            V[2] = {xmax, ymax, zmin};
+            V[3] = {xmin, ymax, zmin};
+            V[4] = {xmin, ymin, zmax};
+            V[5] = {xmax, ymin, zmax};
+            V[6] = {xmax, ymax, zmax};
+            V[7] = {xmin, ymax, zmax};
+
+            std::array<QEMMesh::VertexHandle, 8> vh;
+            for (int i = 0; i < 8; ++i)
+                vh[i] = mesh.add_vertex(QEMMesh::Point(V[i].x(), V[i].y(), V[i].z()));
+
+            auto addTri = [&](int a, int b, int c) {
+                std::vector<Mesh::VertexHandle> face_vhandles;
+                face_vhandles.reserve(3);
+                face_vhandles.push_back(vh[a]);
+                face_vhandles.push_back(vh[b]);
+                face_vhandles.push_back(vh[c]);
+                mesh.add_face(face_vhandles);
+            };
+
+            addTri(0, 1, 2);
+            addTri(0, 2, 3);
+
+            addTri(4, 6, 5);
+            addTri(4, 7, 6);
+
+            addTri(0, 5, 1);
+            addTri(0, 4, 5);
+
+            addTri(3, 2, 6);
+            addTri(3, 6, 7);
+
+            addTri(0, 3, 7);
+            addTri(0, 7, 4);
+
+            addTri(1, 6, 2);
+            addTri(1, 5, 6);
+
+        }
+
+        massert(OpenMesh::IO::write_mesh(mesh, path), "Error in octree export!");
+    }
+
+    inline std::vector<Node>& get_nodes() { return tree_; }
+
+    inline size_t total_collasable_faces() const { return total_collasable_faces_; }
+
+    inline Vec4ui get_vertex_indices(const Mesh& mesh, 
+                                     const Mesh::VertexHandle vh,
+                                     const Eigen::Vector3f max,
+                                     const Eigen::Vector3f min) 
+    {
+        auto coords = mesh.point(vh);
+        coords[0] -= min.x();
+        coords[1] -= min.y();
+        coords[2] -= min.z();
+
+        Eigen::Vector3f block_size = (max - min) * 0.5f;
+        uint32_t x = (coords[0] >= block_size.x()) ? 1 : 0;
+        uint32_t y = (coords[1] >= block_size.y()) ? 1 : 0;
+        uint32_t z = (coords[2] >= block_size.z()) ? 1 : 0;
+        size_t index = x + (y * 2) + (z * 4);
+
+        return Vec4ui(x, y, z, index);
     }
 
 private:
 
     void split(Mesh& mesh, int index) {
+        PROFILING_SCOPE("Split");
         std::vector<Mesh::VertexHandle> vertices = std::move(tree_[index].vertices);
         std::vector<Mesh::EdgeHandle> edges = std::move(tree_[index].edges);
         
@@ -217,7 +310,6 @@ private:
             child.min_coords = bb.first;
             child.max_coords = bb.second;
         }
-
 
         #pragma omp parallel
         {
@@ -316,22 +408,4 @@ private:
         return result;
     }
 
-    inline Vec4ui get_vertex_indices(const Mesh& mesh, 
-                                     const Mesh::VertexHandle vh,
-                                     const Eigen::Vector3f max,
-                                     const Eigen::Vector3f min) 
-    {
-        auto coords = mesh.point(vh);
-        coords[0] -= min.x();
-        coords[1] -= min.y();
-        coords[2] -= min.z();
-
-        Eigen::Vector3f block_size = (max - min) * 0.5f;
-        uint32_t x = (coords[0] >= block_size.x()) ? 1 : 0;
-        uint32_t y = (coords[1] >= block_size.y()) ? 1 : 0;
-        uint32_t z = (coords[2] >= block_size.z()) ? 1 : 0;
-        size_t index = x + (y * 2) + (z * 4);
-
-        return Vec4ui(x, y, z, index);
-    }
 };
