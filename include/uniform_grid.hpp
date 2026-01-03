@@ -26,9 +26,9 @@ class UniformGrid {
     uint32_t total_collasable_faces_ = 0;
     uint32_t num_split_ = 4;
 
-    std::vector<Cell> cells_;
 
 public:
+    std::vector<Cell> cells_;
 
     UniformGrid() = default;
 

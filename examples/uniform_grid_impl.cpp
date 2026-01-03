@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
             PROFILING_SCOPE("Processing");
             const uint32_t num_cells = uniform_grid.num_cells();
 
-            #pragma omp parallel for schedule(static)
+            #pragma omp parallel for schedule(dynamic, 1)
             for (size_t j = 0; j < num_cells; j++) { 
                 auto pq = uniform_grid.get_qem_pq(mesh, j);
 

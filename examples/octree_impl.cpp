@@ -1,3 +1,4 @@
+#include "logging.hpp"
 #include "profiling.hpp"
 #include <cmath>
 #include <cstdint>
@@ -37,7 +38,7 @@ int main(int argc, char **argv) {
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
-   
+ 
     qems::Octree octree;
     {
         PROFILING_SCOPE("QEM-Simplification");
@@ -52,7 +53,7 @@ int main(int argc, char **argv) {
                 qems::compute_bounding_box(mesh, min, max); 
             }
 
-            uint32_t limit = mesh.n_vertices() / (omp_get_max_threads() * 2);
+            uint32_t limit = mesh.n_vertices() / omp_get_max_threads();
             octree = qems::Octree(min, max, limit);
             #pragma omp declare reduction(                           \
                 octree_merge : qems::Octree : omp_out.merge(omp_in)) \
@@ -130,7 +131,7 @@ int main(int argc, char **argv) {
         {
             PROFILING_SCOPE("Processing");
 
-            #pragma omp parallel for schedule(static)
+            #pragma omp parallel for schedule(dynamic, 1)
             for (size_t j = 0; j < tree.size(); j++) { 
                 if (!tree[j].is_leaf)
                     continue;
@@ -149,6 +150,7 @@ int main(int argc, char **argv) {
                 qems::simplification(mesh, local_target, local_num_faces, pq);
             }
         }
+
 
         {
             PROFILING_SCOPE("Mesh-Cleanup");
@@ -205,7 +207,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    octree.export_mesh("out/wireframe.obj");
+    //octree.export_mesh("out/wireframe.obj");
 
     LOG_DEBUG("Final computation mesh vertices: {}, edges: {}, faces: {}", 
               mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
