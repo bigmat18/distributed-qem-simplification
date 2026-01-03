@@ -83,8 +83,10 @@ int main(int argc, char **argv) {
         }
     }
 
-    LOG_DEBUG("Mesh vertices: {}, edges: {}, faces: {}", mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
-    massert(OpenMesh::IO::write_mesh(mesh, "out/seq.ply"), "Error in mesh export!");
+    LOG_DEBUG("Mesh vertices: {}, edges: {}, faces: {}", 
+              mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
+
+    massert(OpenMesh::IO::write_mesh(mesh, "out/sequential.ply"), "Error in mesh export!");
     LOG_INFO("Mesh successfully exported!");
 
     PROFILING_PRINT();
