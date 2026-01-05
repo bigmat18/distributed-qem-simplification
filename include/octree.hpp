@@ -68,9 +68,9 @@ public:
 
     uint32_t add_vertex(const QEMMesh& mesh, const QEMMesh::VertexHandle vh);
 
-    void add_edge(const QEMMesh& mesh, const QEMMesh::EdgeHandle eh);
+    bool add_edge(const QEMMesh& mesh, const QEMMesh::EdgeHandle eh);
 
-    void increment_collasable_faces(const QEMMesh& mesh, const QEMMesh::FaceHandle fh); 
+    bool increment_collasable_faces(const QEMMesh& mesh, const QEMMesh::FaceHandle fh); 
 
     void merge(const Octree& other);
 
@@ -79,6 +79,18 @@ public:
     void export_mesh(const std::filesystem::path path);
 
     inline uint32_t total_collasable_faces() const { return total_collasable_faces_; }
+
+    inline std::vector<Node>& get_nodes() { return tree_; }
+
+    inline BalancedPartitions get_balanced_partitioned_tree(uint32_t partitions) {
+        std::vector<std::vector<const Node*>> result;
+        
+        return result;
+    }
+
+private:
+
+    void split(QEMMesh& mesh, uint32_t idx);
 
     inline Vec4ui get_vertex_indices(const QEMMesh& mesh, 
                                      const QEMMesh::VertexHandle vh,
@@ -94,22 +106,10 @@ public:
         uint32_t x = (coords[0] >= block_size.x()) ? 1 : 0;
         uint32_t y = (coords[1] >= block_size.y()) ? 1 : 0;
         uint32_t z = (coords[2] >= block_size.z()) ? 1 : 0;
-        size_t index = x + (y * 2) + (z * 4);
+        uint32_t index = x + (y * 2) + (z * 4);
 
         return Vec4ui(x, y, z, index);
     }
-
-    inline std::vector<Node>& get_nodes() { return tree_; }
-
-    inline BalancedPartitions get_balanced_partitioned_tree(uint32_t partitions) {
-        std::vector<std::vector<const Node*>> result;
-        
-        return result;
-    }
-
-private:
-
-    void split(QEMMesh& mesh, uint32_t idx);
 
     inline BoundingBox compute_bounding_box(std::size_t idx, 
                                             Eigen::Vector3d center,

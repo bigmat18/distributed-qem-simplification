@@ -15,7 +15,7 @@ foreach (subdir ${EXAMPLES})
     if (IS_DIRECTORY ${SUBDIR_PATH} AND EXISTS ${MAIN_FILE})
 
         add_executable(${subdir} ${MAIN_FILE})
-        target_link_libraries(${subdir} PRIVATE qems cxxopts)
+        target_link_libraries(${subdir} PUBLIC qems cxxopts)
 
     else()
         message(STATUS "-- main.cpp don't exists in ${subdir}, skipped")

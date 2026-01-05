@@ -60,6 +60,14 @@ int main(int argc, char **argv) {
                 initializer(omp_priv = qems::Octree(omp_orig)        \
             )
 
+            auto set_neighborhood = [&](qems::QEMMesh::VertexHandle vh) {
+                if (!mesh.data(vh).Collasable) 
+                    return;
+
+                for (auto vvh : mesh.vv_range(vh))
+                mesh.data(vvh).Collasable = false;
+            };
+
             LOG_DEBUG("Start Octree building");
 
             PROFILING_LOCK();
@@ -74,9 +82,7 @@ int main(int argc, char **argv) {
                         uint32_t idx = octree.add_vertex(mesh, vh);
                         mesh.data(vh).NodeIdx = idx;
                     }
-                }
 
-                {
                     #pragma omp for schedule(static)  
                     for (size_t i = 0; i < mesh.n_edges(); ++i) {
                         auto eh = qems::QEMMesh::EdgeHandle(i);
@@ -84,31 +90,34 @@ int main(int argc, char **argv) {
                         auto vh0 = mesh.from_vertex_handle(heh);
                         auto vh1 = mesh.to_vertex_handle(heh);
 
-                        size_t idx0 = octree.get_vertex_indices(mesh, vh0, min, max).w();
-                        size_t idx1 = octree.get_vertex_indices(mesh, vh1, min, max).w();
+                        uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                        uint32_t idx1 = mesh.data(vh1).NodeIdx;
 
-                        if (idx0 == idx1) {
+                        if (idx0 != idx1) {
+                            mesh.data(vh0).Collasable = false;
+                            mesh.data(vh1).Collasable = false;
+
+                            set_neighborhood(vh0);
+                            set_neighborhood(vh1);
+                        } 
+                    }
+
+                    #pragma omp for schedule(static)
+                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                        auto eh = qems::QEMMesh::EdgeHandle(i);
+                        if(octree.add_edge(mesh, eh)) {
+                            auto heh = mesh.halfedge_handle(eh, 0);
+                            auto vh0 = mesh.from_vertex_handle(heh);
+                            auto vh1 = mesh.to_vertex_handle(heh);
+
                             Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
                             Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
                             mesh.data(eh).Error = newV.transpose() * Q * newV;
                             mesh.data(eh).NewVertex = newV;
-                        } else {
-                            mesh.data(vh0).Collasable = false;
-                            mesh.data(vh1).Collasable = false;
                         }
                     }
-                }
 
-                {
-                    #pragma omp for schedule(static)
-                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                        auto eh = qems::QEMMesh::EdgeHandle(i);
-                        octree.add_edge(mesh, eh);
-                    }
-                }
-
-                {
                     #pragma omp for schedule(static)
                     for(size_t i = 0; i < mesh.n_faces(); i++) {
                         auto fh = qems::QEMMesh::FaceHandle(i);

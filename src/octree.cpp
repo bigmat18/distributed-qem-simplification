@@ -1,3 +1,4 @@
+#include "massert.hpp"
 #include <cstdint>
 #include <utils.hpp>
 #include <octree.hpp>
@@ -5,8 +6,8 @@
 namespace qems {
 
 uint32_t Octree::add_vertex(const QEMMesh& mesh, const QEMMesh::VertexHandle vh) {
-    if (mesh.status(vh).deleted() || !mesh.is_valid_handle(vh))
-        return -1;
+    massert(!mesh.status(vh).deleted(), "Vertex Deleted");
+    massert(mesh.is_valid_handle(vh), "Vertex Handle not valid");
 
     Eigen::Vector3d max = max_coords_;
     Eigen::Vector3d min = min_coords_;
@@ -37,9 +38,9 @@ uint32_t Octree::add_vertex(const QEMMesh& mesh, const QEMMesh::VertexHandle vh)
     return -1;
 }
 
-void Octree::add_edge(const QEMMesh& mesh, const QEMMesh::EdgeHandle eh) {
-    if (mesh.status(eh).deleted() || !mesh.is_valid_handle(eh))
-        return;
+bool Octree::add_edge(const QEMMesh& mesh, const QEMMesh::EdgeHandle eh) {
+    massert(!mesh.status(eh).deleted(), "Edge Deleted");
+    massert(mesh.is_valid_handle(eh), "Edge Handle not valid");
 
     auto heh = mesh.halfedge_handle(eh);
     auto vh1 = mesh.from_vertex_handle(heh);
@@ -50,21 +51,24 @@ void Octree::add_edge(const QEMMesh& mesh, const QEMMesh::EdgeHandle eh) {
         auto idx2 = mesh.data(vh2).NodeIdx;
         massert(idx1 == idx2,"Vertex in differents node both collasable are not allowed");
         tree_[idx1].edges.push_back(eh);
+        return true;
     }
+    return false;
 }
 
-void Octree::increment_collasable_faces(const QEMMesh& mesh, const QEMMesh::FaceHandle fh) {
-    if (mesh.status(fh).deleted() || !mesh.is_valid_handle(fh))
-        return;
+bool Octree::increment_collasable_faces(const QEMMesh& mesh, const QEMMesh::FaceHandle fh) {
+    massert(!mesh.status(fh).deleted(), "Face Deleted");
+    massert(mesh.is_valid_handle(fh), "Face Handle not valid");
 
     for (const auto& vh : mesh.fv_range(fh)) {
         if (!mesh.data(vh).Collasable)
-            return;
+            return false;
     }
 
     auto vh = *mesh.cfv_iter(fh);
     tree_[mesh.data(vh).NodeIdx].collasable_faces++;
     total_collasable_faces_++;
+    return true;
 }
 
 void Octree::merge(const Octree& other) {

@@ -41,11 +41,11 @@ public:
         num_split_(other.num_split_),
         cells_(num_split_ * num_split_ * num_split_) {};
 
-    void add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh);
+    uint32_t add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh);
 
-    void add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh);
+    bool add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh);
 
-    void increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceHandle fh);
+    bool increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceHandle fh);
 
     void merge(const UniformGrid& other);
 
@@ -59,6 +59,7 @@ public:
         return QEMPriorityQueue(QEMEdgeCompare(mesh), cells_[idx].edges);
     }
 
+private:
     inline Vec4ui get_vertex_indices(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {
         auto coords = mesh.point(vh);
         coords[0] -= min_coords_.x();
