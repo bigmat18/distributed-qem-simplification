@@ -1,0 +1,5 @@
+- [] Riadattare cpp-utils-lib per escludere std::format in caso non ci fosse
+- [] Scrivere import parallelo per piu file (sia .obj che .ply)
+- [] Ristruttureare uniform_grid e octree per gestire meglio le risorse
+- [] Scrivere versione MPI senza balaning intelligente
+- [] Scrivere versione MPI con balancing intelligente
