@@ -1,4 +1,6 @@
+#include "debug.hpp"
 #include "logging.hpp"
+#include "mesh_import.hpp"
 #include "profiling.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -29,10 +31,16 @@ int main(int argc, char **argv) {
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
 
-    qems::QEMMesh mesh;
-    massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+    qems::MeshData data;
+    {
+        PROFILING_SCOPE("Import-Data");
+        qems::import_mesh<qems::ImportType::ROW_MESH_DATA>(FILENAME, data);
+    }
+    PROFILING_PRINT();
 
+    qems::QEMMesh& mesh = data.mesh;
     LOG_INFO("{} successfully imported", FILENAME.c_str());
+
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
