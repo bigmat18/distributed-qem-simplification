@@ -15,7 +15,8 @@ int main(int argc, char **argv) {
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,filename", "Input filename list", cxxopts::value<std::string>())
-        ("n,target", "Target faces", cxxopts::value<uint32_t>());
+        ("n,target", "Target faces", cxxopts::value<uint32_t>())
+        ("w,wireframe", "Export wireframe", cxxopts::value<bool>()->default_value("false"));
 
     options.parse_positional({"filename"});
     auto result = options.parse(argc, argv);
@@ -28,21 +29,25 @@ int main(int argc, char **argv) {
     massert(result.count("filename") >= 1, "Need [input filename]");
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
+    const bool        EXPORT_WF       = result["wireframe"].as<bool>();
 
     qems::QEMMesh mesh;
-    massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+    qems::Octree octree;
 
-    LOG_INFO("{} successfully imported", FILENAME.c_str());
     mesh.request_vertex_status();
     mesh.request_vertex_colors();
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
  
-    qems::Octree octree;
     {
         PROFILING_SCOPE("QEM-Simplification");
+        {
+            PROFILING_SCOPE("Import-Mesh");
+            massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+        }
 
+        LOG_INFO("{} successfully imported", FILENAME.c_str());
         {
             PROFILING_SCOPE("Pre-Processing");
             Eigen::Vector3d min;
@@ -215,8 +220,9 @@ int main(int argc, char **argv) {
             mesh.garbage_collection();
         }
     }
-
-    //octree.export_mesh("out/wireframe.obj");
+    
+    if (EXPORT_WF)
+        octree.export_mesh("out/wireframe.obj");
 
     LOG_DEBUG("Final computation mesh vertices: {}, edges: {}, faces: {}", 
               mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());

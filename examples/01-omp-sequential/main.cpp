@@ -27,9 +27,6 @@ int main(int argc, char **argv) {
 
 
     qems::QEMMesh mesh;
-    massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
-
-    LOG_INFO("{} successfully imported", FILENAME.c_str());
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
@@ -37,6 +34,12 @@ int main(int argc, char **argv) {
  
     {
         PROFILING_SCOPE("QEM-Simplification");
+        {
+            PROFILING_SCOPE("Import-Mesh");
+            massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+        }
+
+        LOG_INFO("{} successfully imported", FILENAME.c_str());
 
         std::vector<qems::QEMMesh::EdgeHandle> edges;
         {

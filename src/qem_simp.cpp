@@ -94,8 +94,7 @@ void compute_bounding_box(const QEMMesh &mesh, Eigen::Vector3d &min, Eigen::Vect
                           std::numeric_limits<double>::lowest(),
                           std::numeric_limits<double>::lowest());
     
-    for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-        const auto vh = QEMMesh::VertexHandle(static_cast<int>(i));
+    for (const auto vh : mesh.vertices()) {
         if (mesh.status(vh).deleted())
             continue;
 

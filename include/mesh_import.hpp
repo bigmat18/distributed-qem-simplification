@@ -27,12 +27,6 @@ struct MeshData {
     Eigen::Vector3d max_coords;
 
     QEMMesh mesh;
-
-    //inline bool has_row_vertices() const { return row_vertices.has_value(); }
-
-    //inline bool has_row_faces() const { return row_faces.has_value(); }
-
-    //inline bool has_row_mesh() const { return mesh.has_value(); }
 };
 
 namespace detail {
