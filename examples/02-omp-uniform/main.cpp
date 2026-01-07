@@ -1,4 +1,5 @@
 #include "logging.hpp"
+#include "mesh_import.hpp"
 #include "profiling.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +30,8 @@ int main(int argc, char **argv) {
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
 
-    qems::QEMMesh mesh;
+    qems::MeshData data;
+    qems::QEMMesh &mesh = data.mesh;
     qems::UniformGrid uniform_grid;
 
     mesh.request_vertex_status();
@@ -41,20 +43,15 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+            qems::import_mesh<qems::ImportType::ROW_MESH_DATA>(FILENAME, data);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());
 
         {
             PROFILING_SCOPE("Pre-Processing");
-            Eigen::Vector3d min;
-            Eigen::Vector3d max;
-
-            {
-                PROFILING_SCOPE("Compute-Bounding-Box");
-                qems::compute_bounding_box(mesh, min, max); 
-            }
+            Eigen::Vector3d &min = data.min_coords;
+            Eigen::Vector3d &max = data.max_coords;
 
             uniform_grid = qems::UniformGrid(min, max);
             #pragma omp declare reduction(                                      \
