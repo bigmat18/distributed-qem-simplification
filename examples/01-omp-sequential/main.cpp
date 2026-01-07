@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
 
 
     qems::QEMMesh mesh;
+
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();

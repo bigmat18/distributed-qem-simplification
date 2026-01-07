@@ -1,4 +1,5 @@
 #include "logging.hpp"
+#include "mesh_import.hpp"
 #include "profiling.hpp"
 #include <cmath>
 #include <cstdint>
@@ -31,7 +32,8 @@ int main(int argc, char **argv) {
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
     const bool        EXPORT_WF       = result["wireframe"].as<bool>();
 
-    qems::QEMMesh mesh;
+    qems::MeshData data;
+    qems::QEMMesh &mesh = data.mesh;
     qems::Octree octree;
 
     mesh.request_vertex_status();
@@ -44,19 +46,14 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+            qems::import_mesh<qems::ImportType::ROW_MESH_DATA>(FILENAME, data);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());
         {
             PROFILING_SCOPE("Pre-Processing");
-            Eigen::Vector3d min;
-            Eigen::Vector3d max;
-
-            {
-                PROFILING_SCOPE("Compute-Bounding-Box");
-                qems::compute_bounding_box(mesh, min, max); 
-            }
+            Eigen::Vector3d &min = data.min_coords;
+            Eigen::Vector3d &max = data.max_coords;
 
             uint32_t limit = mesh.n_vertices() / omp_get_max_threads();
             octree = qems::Octree(min, max, limit);
@@ -78,7 +75,7 @@ int main(int argc, char **argv) {
             PROFILING_LOCK();
             #pragma omp parallel reduction(octree_merge : octree)
             {
-                PROFILING_SCOPE("Compute-Octree");
+                PROFILING_SCOPE("Octree-Building");
                 {
                     #pragma omp for schedule(static) 
                     for (size_t i = 0; i < mesh.n_vertices(); ++i) {
