@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
 
     qems::MeshData data;
-    qems::QEMMesh &mesh = data.mesh;
+    qems::QEMMesh mesh;
     qems::UniformGrid uniform_grid;
 
     mesh.request_vertex_status();
@@ -44,7 +44,8 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            qems::import_mesh<qems::ImportType::ROW_MESH_DATA>(FILENAME, data);
+            qems::import_mesh(FILENAME, data);
+            qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());

@@ -2,10 +2,10 @@ cmake_minimum_required(VERSION 3.26)
 project(qems-examples)
 
 set(EXAMPLES 
-    01-omp-sequential
+    01-sequential
     02-omp-uniform
     03-omp-octree
-    04-mpi-uniform
+    04-mpi-base
 )
 
 foreach (subdir ${EXAMPLES})

@@ -47,4 +47,13 @@ using QEMPriorityQueue =
     std::priority_queue<QEMMesh::EdgeHandle,
                         std::vector<QEMMesh::EdgeHandle>,
                         QEMEdgeCompare>;
+
+void row_data_to_mesh(const std::vector<float>& vertices, 
+                      const std::vector<uint32_t>& faces,
+                      QEMMesh& mesh);
+
+void mesh_to_row_data(const QEMMesh& mesh,
+                      std::vector<float> &vertices, 
+                      std::vector<uint32_t> &faces);
+
 }  // namespace qems

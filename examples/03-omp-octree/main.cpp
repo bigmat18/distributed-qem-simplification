@@ -10,6 +10,7 @@
 
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
+#include <mesh_import.hpp>
 #include <octree.hpp>
 
 int main(int argc, char **argv) {
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
     const bool        EXPORT_WF       = result["wireframe"].as<bool>();
 
     qems::MeshData data;
-    qems::QEMMesh &mesh = data.mesh;
+    qems::QEMMesh mesh;
     qems::Octree octree;
 
     mesh.request_vertex_status();
@@ -46,7 +47,8 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            qems::import_mesh<qems::ImportType::ROW_MESH_DATA>(FILENAME, data);
+            qems::import_mesh(FILENAME, data);
+            qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());

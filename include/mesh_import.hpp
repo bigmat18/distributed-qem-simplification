@@ -9,13 +9,6 @@
 
 namespace qems {
 
-enum class ImportType {
-    ROW_DATA,
-    MESH_DATA,
-    ROW_MESH_DATA
-};
-
-
 struct MeshData {
     std::string name;
     std::string type;
@@ -25,21 +18,16 @@ struct MeshData {
 
     Eigen::Vector3d min_coords;
     Eigen::Vector3d max_coords;
-
-    QEMMesh mesh;
 };
 
 namespace detail {
 
-template <ImportType type>
 void import_ply(const std::filesystem::path path, MeshData& data);
 
-template <ImportType type>
 void import_obj(const std::filesystem::path path, MeshData& data);
 
 }
 
-template <ImportType type>
 void import_mesh(const std::filesystem::path path, MeshData& data);
 
 }

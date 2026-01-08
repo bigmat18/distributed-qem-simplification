@@ -12,7 +12,6 @@ namespace qems {
 
 namespace detail {
 
-template <ImportType type>
 void import_ply(const std::filesystem::path path, MeshData& data) {
     std::ifstream file(path, std::ios::binary); 
     massert(file.is_open(), "Error: Failed to open PLY file.");
@@ -214,73 +213,24 @@ void import_ply(const std::filesystem::path path, MeshData& data) {
                      local_faces[i].begin(), 
                      local_faces[i].end());
     }
-
-
-    if constexpr (type == ImportType::MESH_DATA ||
-                  type == ImportType::ROW_MESH_DATA)
-    {
-        data.mesh.clear();
-        data.mesh.reserve(num_vertices, num_vertices * 2, num_faces);
-
-        for (size_t i = 0; i < data.row_vertices.size(); i+=3) {
-            float x = data.row_vertices[i];
-            float y = data.row_vertices[i+1];
-            float z = data.row_vertices[i+2];
-            data.mesh.add_vertex(QEMMesh::Point(x,y,z));
-        }
-
-        std::vector<QEMMesh::VertexHandle> face_vhs;
-        face_vhs.reserve(3);
-
-        for (size_t i = 0; i < data.row_faces.size(); i += 3) {
-            face_vhs.clear();
-            face_vhs.emplace_back(data.row_faces[i]);
-            face_vhs.emplace_back(data.row_faces[i+1]);
-            face_vhs.emplace_back(data.row_faces[i+2]);
-            data.mesh.add_face(face_vhs);
-        }
-
-        if constexpr (type == ImportType::MESH_DATA) {
-            data.row_vertices.clear();
-            data.row_vertices.shrink_to_fit();
-            data.row_faces.clear();
-            data.row_faces.shrink_to_fit();
-        }
-
-    }
 }
 
-template <ImportType type>
 void import_obj(const std::filesystem::path path, MeshData& data) 
 {
     massert(false, ".obj not supported");
 }
 
-template void import_obj<ImportType::MESH_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_obj<ImportType::ROW_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_obj<ImportType::ROW_MESH_DATA>(const std::filesystem::path path, MeshData& data);
-
-
-template void import_ply<ImportType::ROW_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_ply<ImportType::MESH_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_ply<ImportType::ROW_MESH_DATA>(const std::filesystem::path path, MeshData& data);
-
 }
 
-template <ImportType type>
 void import_mesh(const std::filesystem::path path, MeshData& data) {
     std::string ext = path.extension().string();
 
     if (ext == ".obj")
-        detail::import_obj<type>(path, data);
+        detail::import_obj(path, data);
     else if (ext == ".ply")
-        detail::import_ply<type>(path, data);
+        detail::import_ply(path, data);
     else
         massert(false, "Only .ply and .obj supported");
 }
-
-template void import_mesh<ImportType::ROW_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_mesh<ImportType::MESH_DATA>(const std::filesystem::path path, MeshData& data);
-template void import_mesh<ImportType::ROW_MESH_DATA>(const std::filesystem::path path, MeshData& data);
 
 }
