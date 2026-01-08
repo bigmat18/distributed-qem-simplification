@@ -26,9 +26,11 @@ class UniformGrid {
     uint32_t total_collasable_faces_ = 0;
     uint32_t num_split_ = 4;
 
-
-public:
     std::vector<Cell> cells_;
+public:
+    using value_type      = Cell;
+    using iterator        = std::vector<Cell>::iterator;
+    using const_iterator  = std::vector<Cell>::const_iterator;
 
     UniformGrid() = default;
 
@@ -49,15 +51,17 @@ public:
 
     void merge(const UniformGrid& other);
 
-    inline uint32_t collasable_faces(std::size_t idx) const { return cells_[idx].collasable_faces; }
-
     inline uint32_t total_collasable_faces() const { return total_collasable_faces_; }
 
-    inline uint32_t num_cells() const { return num_split_ * num_split_ * num_split_; }
+    iterator begin() { return cells_.begin(); }
+    iterator end()   { return cells_.end(); }
 
-    inline QEMPriorityQueue get_qem_pq(const QEMMesh& mesh, std::size_t idx) {
-        return QEMPriorityQueue(QEMEdgeCompare(mesh), cells_[idx].edges);
-    }
+    const_iterator begin()  const { return cells_.begin(); }
+    const_iterator end()    const { return cells_.end(); }
+    const_iterator cbegin() const { return cells_.cbegin(); }
+    const_iterator cend()   const { return cells_.cend(); }
+
+    std::size_t size() const { return cells_.size(); }
 
 private:
     inline Vec4ui get_vertex_indices(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {

@@ -137,17 +137,15 @@ int main(int argc, char **argv) {
         }
 
         LOG_DEBUG("Start Parallel QEM-Simplification");
-        auto tree = octree.get_nodes();
  
         {
             PROFILING_SCOPE("Processing");
 
             #pragma omp parallel for schedule(dynamic, 1)
-            for (size_t j = 0; j < tree.size(); j++) { 
-                if (!tree[j].is_leaf)
+            for (const auto &node : octree) { 
+                if (!node.is_leaf)
                     continue;
 
-                auto& node = tree[j];
                 uint32_t local_num_faces = node.collasable_faces;
                 float total_faces = static_cast<float>(octree.total_collasable_faces());
                 float cell_faces  = static_cast<float>(local_num_faces);

@@ -37,8 +37,11 @@ class Octree {
     uint32_t total_collasable_faces_ = 0;
 
 public:
-    Octree() = default;
+    using value_type      = Node;
+    using iterator        = std::vector<Node>::iterator;
+    using const_iterator  = std::vector<Node>::const_iterator;
 
+    Octree() = default;
 
     Octree(Eigen::Vector3d min_coords, Eigen::Vector3d max_coords, size_t limit) :
         min_coords_(min_coords), max_coords_(max_coords), limit_(limit), tree_(8)
@@ -80,13 +83,15 @@ public:
 
     inline uint32_t total_collasable_faces() const { return total_collasable_faces_; }
 
-    inline std::vector<Node>& get_nodes() { return tree_; }
+    iterator begin() { return tree_.begin(); }
+    iterator end()   { return tree_.end(); }
 
-    inline BalancedPartitions get_balanced_partitioned_tree(uint32_t partitions) {
-        std::vector<std::vector<const Node*>> result;
-        
-        return result;
-    }
+    const_iterator begin()  const { return tree_.begin(); }
+    const_iterator end()    const { return tree_.end(); }
+    const_iterator cbegin() const { return tree_.cbegin(); }
+    const_iterator cend()   const { return tree_.cend(); }
+
+    std::size_t size() const { return tree_.size(); }
 
 private:
 

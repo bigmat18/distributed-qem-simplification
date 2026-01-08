@@ -3,6 +3,7 @@
 #include "profiling.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <omp.h>
 #include <unistd.h>
 #include <cxxopts.hpp>
 
@@ -53,7 +54,7 @@ int main(int argc, char **argv) {
             Eigen::Vector3d &min = data.min_coords;
             Eigen::Vector3d &max = data.max_coords;
 
-            uniform_grid = qems::UniformGrid(min, max);
+            uniform_grid = qems::UniformGrid(min, max, omp_get_max_threads() / 2);
             #pragma omp declare reduction(                                      \
                 uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
                 initializer(omp_priv = qems::UniformGrid(omp_orig)              \
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
             PROFILING_LOCK();
             #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
             {
-                PROFILING_SCOPE("Compute-Uniform-Grid");
+                PROFILING_SCOPE("Uniform-Grid-Building");
                 {
                     #pragma omp for schedule(static) 
                     for (size_t i = 0; i < mesh.n_vertices(); ++i) {
@@ -133,13 +134,12 @@ int main(int argc, char **argv) {
         LOG_DEBUG("Start Parallel QEM-Simplification");
         {
             PROFILING_SCOPE("Processing");
-            const uint32_t num_cells = uniform_grid.num_cells();
 
             #pragma omp parallel for schedule(dynamic, 1)
-            for (size_t j = 0; j < num_cells; j++) { 
-                auto pq = uniform_grid.get_qem_pq(mesh, j);
+            for (const auto &cell : uniform_grid) {
+                auto pq = qems::QEMPriorityQueue(qems::QEMEdgeCompare(mesh), cell.edges);
 
-                uint32_t local_num_faces = uniform_grid.collasable_faces(j);
+                uint32_t local_num_faces = cell.collasable_faces; 
                 float total_faces = static_cast<float>(uniform_grid.total_collasable_faces());
                 float cell_faces  = static_cast<float>(local_num_faces);
 
