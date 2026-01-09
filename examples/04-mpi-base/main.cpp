@@ -1,23 +1,24 @@
 #include "logging.hpp"
-#include "massert.hpp"
 #include "profiling.hpp"
 #include <cstdint>
 #include <cxxopts.hpp>
 
+#include <string>
+#include <strings.h>
+#include <filesystem>
+#include <vector>
+
+#include <mpi.h>
+
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
 #include <mesh_import.hpp>
-#include <string>
 #include <uniform_grid.hpp>
 #include <utils.hpp>
-#include <filesystem>
-
-#include <mpi.h>
 
 namespace fs = std::filesystem;
 
 enum MPI_TAG {
-
     TAG_SIZE_V      = 0,
     TAG_DATA_V      = 1,
     TAG_SIZE_F      = 2,
@@ -62,77 +63,150 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
     if (pid == 0) {
+        std::vector<fs::path> file_queue;
+        for (const auto& file : fs::directory_iterator(INPUT))
+        if (fs::is_regular_file(file.status()))
+            file_queue.push_back(file);
 
+        std::array<std::array<double, 6>, 2> bb_buffers;
+        std::array<qems::MeshData, 2> request_buffers;
+        std::vector<MPI_Request> requests(6, MPI_REQUEST_NULL);
+        std::vector<std::string> names_per_worker(num_procs);
 
-        std::array<qems::MeshData, 2> buffers;
-        std::array<MPI_Request, 2> requests;
-        uint32_t active_idx = 0;
-        bool first_iter = true;
+        bool active_req_idx  = false;
+        uint32_t current_file_idx = 0;
+        uint32_t active_workers = 0;
 
-        int worker_dest = 1;
-        for(const auto& file : fs::directory_iterator(INPUT)) {
-            if (!fs::is_regular_file(file.status()))
-                continue;
+        for (int dest = 1; dest < num_procs; ++dest) {
+            if (current_file_idx >= file_queue.size()) 
+                break;  
 
-            int load_idx = first_iter ? 0 : (1 - active_idx);
-            qems::MeshData &load_data = buffers[load_idx];
-            load_data.row_vertices.clear();
-            load_data.row_faces.clear();
+            const auto& file = file_queue[current_file_idx];
+            names_per_worker[dest] = file.filename().string();
 
             {
-                PROFILING_SCOPE("Mesh-Import");
+                PROFILING_SCOPE("Sending-" + file.filename().string());
+                uint32_t index = active_req_idx * 3;
+                MPI_Waitall(3, &requests[index], MPI_STATUSES_IGNORE);
+
+                qems::MeshData &load_data = request_buffers[active_req_idx];
+                std::array<double, 6> &vec_buffer = bb_buffers[active_req_idx];
+
+                load_data.row_vertices.clear();
+                load_data.row_faces.clear();
+
                 qems::import_mesh(file, load_data);
-            }
-            PROFILING_PRINT();
+                LOG_INFO("{} loading {} vertices and {} faces", pid,
+                     load_data.row_vertices.size() / 3, load_data.row_faces.size() / 3);
 
-            if (!first_iter) {
-                MPI_Waitall(2, &requests[0], MPI_STATUSES_IGNORE);
-                active_idx = load_idx;
-            }
+                const auto& min = load_data.min_coords;
+                const auto& max = load_data.max_coords;
 
-            {
-                PROFILING_SCOPE("Data-Sending");
+                const uint32_t num_verts = load_data.row_vertices.size();
+                const uint32_t num_faces = load_data.row_faces.size();
 
-                const qems::MeshData& send_data = buffers[active_idx];
-                const auto& min = send_data.min_coords;
-                const auto& max = send_data.max_coords;
-
-                const uint32_t num_verts = send_data.row_vertices.size();
-                const uint32_t num_faces = send_data.row_faces.size();
-
-                double vec_buffer[6];
                 vec_buffer[0] = min.x(); vec_buffer[1] = min.y(); vec_buffer[2] = min.z();
                 vec_buffer[3] = max.x(); vec_buffer[4] = max.y(); vec_buffer[5] = max.z();
 
-                MPI_Send(vec_buffer, 6, MPI_DOUBLE, worker_dest, TAG_BB, MPI_COMM_WORLD);
+                MPI_Isend(vec_buffer.data(), vec_buffer.size(), MPI_DOUBLE, dest, 
+                          TAG_BB, MPI_COMM_WORLD, &requests[index]);
 
-                uint32_t str_len = send_data.name.size();
-                MPI_Send(&str_len, 1, MPI_UNSIGNED, worker_dest, TAG_NAME_LEN, MPI_COMM_WORLD);
-                MPI_Send(send_data.name.c_str(), str_len, MPI_CHAR, worker_dest, TAG_NAME_DATA, MPI_COMM_WORLD);
+                MPI_Isend(load_data.row_vertices.data(), num_verts, MPI_FLOAT, dest, 
+                          TAG_DATA_V, MPI_COMM_WORLD, &requests[index + 1]); 
 
-                MPI_Send(&num_verts, 1, MPI_UNSIGNED, worker_dest, TAG_SIZE_V, MPI_COMM_WORLD);
-                MPI_Isend(send_data.row_vertices.data(), num_verts, MPI_FLOAT, worker_dest, TAG_DATA_V, MPI_COMM_WORLD, &requests[0]);
+                MPI_Isend(load_data.row_faces.data(), num_faces, MPI_UNSIGNED, dest, 
+                          TAG_DATA_F, MPI_COMM_WORLD, &requests[index + 2]);
 
-                MPI_Send(&num_faces, 1, MPI_UNSIGNED, worker_dest, TAG_SIZE_F, MPI_COMM_WORLD);
-                MPI_Isend(send_data.row_faces.data(), num_faces, MPI_UNSIGNED, worker_dest, TAG_DATA_F, MPI_COMM_WORLD, &requests[1]);
+                active_req_idx = !active_req_idx;
+                current_file_idx++;
+                active_workers++;
             }
             PROFILING_PRINT();
-
-            worker_dest++; 
-            if (worker_dest >= num_procs) worker_dest = 1;
-            first_iter = false;
         }
 
-        if (!first_iter) {
-             MPI_Waitall(2, &requests[0], MPI_STATUSES_IGNORE);
-        }
+        while (active_workers > 0) {
+            MPI_Status status;
+            int source;
+            int count;
 
-        double dummy_buf[6];
-        for (int w = 1; w < num_procs; w++) {
-            MPI_Send(dummy_buf, 6, MPI_DOUBLE, w, TAG_STOP, MPI_COMM_WORLD);
-        }
+            MPI_Probe(MPI_ANY_SOURCE, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            source = status.MPI_SOURCE;
+            MPI_Get_count(&status, MPI_FLOAT, &count);
 
+            std::vector<float> vertices;
+            vertices.resize(count);
+            MPI_Recv(vertices.data(), count, MPI_FLOAT, source, TAG_DATA_V, MPI_COMM_WORLD, &status);
+
+            MPI_Probe(source, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_UNSIGNED, &count);
+
+            std::vector<uint32_t> faces;
+            faces.resize(count);
+            MPI_Recv(faces.data(), count, MPI_UNSIGNED, source, TAG_DATA_F, MPI_COMM_WORLD, &status);
+
+            LOG_INFO("{} received {} vertices and {} faces", pid,
+                     vertices.size() / 3, faces.size() / 3);
+            
+            std::string name;
+            if (current_file_idx < file_queue.size()) {
+                const auto& file = file_queue[current_file_idx];
+                name = names_per_worker[source];
+                names_per_worker[source] = file.filename().string();
+
+                {
+                    PROFILING_SCOPE("Sending-" + file.filename().string());
+
+                    uint32_t index = active_req_idx * 3;
+                    MPI_Waitall(3, &requests[index], MPI_STATUSES_IGNORE);
+
+                    qems::MeshData &load_data = request_buffers[active_req_idx];
+                    std::array<double, 6> &vec_buffer = bb_buffers[active_req_idx];
+
+                    load_data.row_vertices.clear();
+                    load_data.row_faces.clear();
+
+                    qems::import_mesh(file, load_data);
+                    LOG_INFO("{} loading {} vertices and {} faces", pid,
+                             load_data.row_vertices.size() / 3, load_data.row_faces.size() / 3);
+
+                    const auto& min = load_data.min_coords;
+                    const auto& max = load_data.max_coords;
+
+                    const uint32_t num_verts = load_data.row_vertices.size();
+                    const uint32_t num_faces = load_data.row_faces.size();
+
+                    vec_buffer[0] = min.x(); vec_buffer[1] = min.y(); vec_buffer[2] = min.z();
+                    vec_buffer[3] = max.x(); vec_buffer[4] = max.y(); vec_buffer[5] = max.z();
+
+                    MPI_Isend(vec_buffer.data(), vec_buffer.size(), MPI_DOUBLE, source, 
+                              TAG_BB, MPI_COMM_WORLD, &requests[index]);
+
+                    MPI_Isend(load_data.row_vertices.data(), num_verts, MPI_FLOAT, source, 
+                              TAG_DATA_V, MPI_COMM_WORLD, &requests[index + 1]); 
+
+                    MPI_Isend(load_data.row_faces.data(), num_faces, MPI_UNSIGNED, source, 
+                              TAG_DATA_F, MPI_COMM_WORLD, &requests[index + 2]);
+
+                    active_req_idx = !active_req_idx;
+                    current_file_idx++;
+                }
+                PROFILING_PRINT();
+            } else {
+                double dummy_buf[6];
+                MPI_Send(dummy_buf, 6, MPI_DOUBLE, source, TAG_STOP, MPI_COMM_WORLD);
+                active_workers--;
+                name = names_per_worker[source];
+                names_per_worker[source] = "";
+            }
+
+            qems::QEMMesh mesh;
+            qems::row_data_to_mesh(vertices, faces, mesh);
+            massert(OpenMesh::IO::write_mesh(mesh, "out/"+ name), "Error in mesh export!");
+        }
     } else {
+        double vec_buffer[6];
+        MPI_Status status;
+        int count;
         qems::MeshData data;
         auto& min = data.min_coords;
         auto& max = data.max_coords;
@@ -140,34 +214,27 @@ int main(int argc, char* argv[]) {
         while (true) {
             data.row_faces.clear();
             data.row_vertices.clear();
-            data.name.clear();
 
-            double vec_buffer[6];
-            MPI_Status status;
             MPI_Recv(&vec_buffer, 6, MPI_DOUBLE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
             if (status.MPI_TAG == TAG_STOP)
                 break;
 
+            if (status.MPI_TAG != TAG_BB)
+                break;
+
             min.x() = vec_buffer[0]; min.y() = vec_buffer[1]; min.z() = vec_buffer[2];
             max.x() = vec_buffer[3]; max.y() = vec_buffer[4]; max.z() = vec_buffer[5];
 
-            uint32_t str_len;
-            MPI_Recv(&str_len, 1, MPI_UNSIGNED, 0, TAG_NAME_LEN, MPI_COMM_WORLD, &status);
-            data.name.resize(str_len);
-            MPI_Recv(&data.name[0], str_len, MPI_CHAR, 0, TAG_NAME_DATA, MPI_COMM_WORLD, &status);
+            MPI_Probe(0, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_FLOAT, &count);
+            data.row_vertices.resize(count);
+            MPI_Recv(data.row_vertices.data(), count, MPI_FLOAT, 0, TAG_DATA_V, MPI_COMM_WORLD, &status);
 
-            uint32_t num_verts;
-            MPI_Recv(&num_verts, 1, MPI_UNSIGNED, 0, TAG_SIZE_V, MPI_COMM_WORLD, &status);
-
-            data.row_vertices.resize(num_verts);
-            MPI_Recv(data.row_vertices.data(), num_verts, MPI_FLOAT, 0, TAG_DATA_V, MPI_COMM_WORLD, &status);
-
-            uint32_t num_faces;
-            MPI_Recv(&num_faces, 1, MPI_UNSIGNED, 0, TAG_SIZE_F, MPI_COMM_WORLD, &status);
-
-            data.row_faces.resize(num_faces);
-            MPI_Recv(data.row_faces.data(), num_faces, MPI_UNSIGNED, 0, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Probe(0, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_UNSIGNED, &count);
+            data.row_faces.resize(count);
+            MPI_Recv(data.row_faces.data(), count, MPI_UNSIGNED, 0, TAG_DATA_F, MPI_COMM_WORLD, &status);
 
             qems::QEMMesh mesh;
             qems::UniformGrid uniform_grid;
@@ -176,7 +243,7 @@ int main(int argc, char* argv[]) {
             mesh.request_edge_status();
             mesh.request_face_status();
             mesh.request_halfedge_status();
-            LOG_INFO("{} received {} with {} vertices and {} faces", pid, data.name,
+            LOG_INFO("{} received {} vertices and {} faces", pid,
                      data.row_vertices.size() / 3, data.row_faces.size() / 3);
             {
                 PROFILING_SCOPE("QEM-Simplification-Rank-" + std::to_string(pid));
@@ -191,7 +258,7 @@ int main(int argc, char* argv[]) {
                     Eigen::Vector3d &min = data.min_coords;
                     Eigen::Vector3d &max = data.max_coords;
 
-                    uniform_grid = qems::UniformGrid(min, max, omp_get_max_threads() / 2);
+                    uniform_grid = qems::UniformGrid(min, max, 8);
                     #pragma omp declare reduction(                                      \
                         uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
                         initializer(omp_priv = qems::UniformGrid(omp_orig)              \
@@ -338,8 +405,15 @@ int main(int argc, char* argv[]) {
             }
             PROFILING_PRINT();
 
-            massert(OpenMesh::IO::write_mesh(mesh, "out/"+ data.name), "Error in mesh export!");
-            LOG_INFO("Mesh {} successfully exported!", data.name);
+            std::vector<float> vertices;
+            std::vector<uint32_t> faces;
+            qems::mesh_to_row_data(mesh, vertices, faces);
+
+            MPI_Send(vertices.data(), vertices.size(), 
+                     MPI_FLOAT, 0, TAG_DATA_V, MPI_COMM_WORLD);
+
+            MPI_Send(faces.data(), faces.size(), 
+                     MPI_UNSIGNED, 0, TAG_DATA_F, MPI_COMM_WORLD);
         }
     }
     MPI_Finalize();
