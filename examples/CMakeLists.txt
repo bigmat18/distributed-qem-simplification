@@ -6,6 +6,7 @@ set(EXAMPLES
     02-omp-uniform
     03-omp-octree
     04-mpi-base
+    05-mpi-advance
 )
 
 foreach (subdir ${EXAMPLES})
