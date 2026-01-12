@@ -1,19 +1,21 @@
-#include <algorithm>
-#include <iostream>
+#include <cstdint>
 #include <sys/time.h>
 #include <unistd.h>
 
 #include <cxxopts.hpp>
 
-#include "async_send.hpp"
-#include "logging.hpp"
 #include "mesh_import.hpp"
 #include "mpi.h"
 
-#define CSTM_TAG_END 0
+#include "async_send.hpp"
+#include "sync_send_recv.hpp"
+#include "message_layout.hpp"
+#include "packed_message.hpp"
+
 #define CSTM_TAG_BB 1
 #define CSTM_TAG_VERT 2
 #define CSTM_TAG_FACE 3
+#define CSTM_MESH 4
 
 int main(int argc, char* argv[]) {
     int provided;
@@ -37,21 +39,21 @@ int main(int argc, char* argv[]) {
 
     massert(fs::exists("out") && fs::is_directory("out"), 
             "out folder does not exists");
-
     massert(fs::exists(INPUT) && fs::is_directory(INPUT), 
             "Input must be a valid folder");
 
 	int pid, num_procs;
-	
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
+    mpi::MessageLayout layout(CSTM_MESH);
+    layout 
+     .add_buffer<double>(CSTM_TAG_BB)
+     .add_buffer<float>(CSTM_TAG_VERT)
+     .add_buffer<uint32_t>(CSTM_TAG_FACE);
+
     if (pid == 0) {
-        mpi::AsyncSend message;
-        message
-         .add_buffer<double>(CSTM_TAG_BB)
-         .add_buffer<float>(CSTM_TAG_VERT)
-         .add_buffer<uint32_t>(CSTM_TAG_FACE);
+        mpi::AsyncSend send(layout);
 
         int dest = 1;
         for (const auto& file : fs::directory_iterator(INPUT)) {
@@ -73,57 +75,35 @@ int main(int argc, char* argv[]) {
             bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
 
-            message.isend(dest, {
+            send.isend(dest, {
                 {CSTM_TAG_BB, std::move(bb)},
                 {CSTM_TAG_VERT, std::move(load_data.row_vertices)},
                 {CSTM_TAG_FACE, std::move(load_data.row_faces)}
             });
+
             dest++;
             if (dest >= num_procs) dest = 1;
         }
-            
-        message.wait();
+        send.wait();
 
-        double end[6];
-        MPI_Request request;
-        for (int w = 1; w < num_procs; ++w) {
-            MPI_Isend(&end[0], 6, MPI_DOUBLE, w, CSTM_TAG_END, MPI_COMM_WORLD, &request);
-        }
+        mpi::PackedMessage end_msg = mpi::PackedMessage(mpi::MessageLayout());
+        for (int w = 1; w < num_procs; w++)
+            mpi::sync_send(w, end_msg);
 
     } else {
-        double vec_buffer[6];
-        MPI_Status status;
-        int count;
-        qems::MeshData data;
-        auto& min = data.min_coords;
-        auto& max = data.max_coords;
+        mpi::PackedMessage msg(layout);
+        auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
+        auto& vertices = msg.get_buffer<float>(CSTM_TAG_VERT);
+        auto& faces = msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
 
         while (true) {
-            data.row_faces.clear();
-            data.row_vertices.clear();
-
-            MPI_Recv(&vec_buffer, 6, MPI_DOUBLE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-            if (status.MPI_TAG == CSTM_TAG_END || status.MPI_TAG != CSTM_TAG_BB)
+            if (!mpi::sync_recv(0, msg)) 
                 break;
-
-            min.x() = vec_buffer[0]; min.y() = vec_buffer[1]; min.z() = vec_buffer[2];
-            max.x() = vec_buffer[3]; max.y() = vec_buffer[4]; max.z() = vec_buffer[5];
-
-            MPI_Probe(0, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
-            MPI_Get_count(&status, MPI_FLOAT, &count);
-            data.row_vertices.resize(count);
-            MPI_Recv(data.row_vertices.data(), count, MPI_FLOAT, 0, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
-
-            MPI_Probe(0, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
-            MPI_Get_count(&status, MPI_UNSIGNED, &count);
-            data.row_faces.resize(count);
-            MPI_Recv(data.row_faces.data(), count, MPI_UNSIGNED, 0, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
 
             LOG_INFO("{} - Recived {} vertuces, {} faces", 
                      pid,
-                     data.row_vertices.size() / 3, 
-                     data.row_faces.size() / 3);
+                     vertices.size() / 3, 
+                     faces.size() / 3);
         }
     }
 
