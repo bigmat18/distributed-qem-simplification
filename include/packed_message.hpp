@@ -1,5 +1,6 @@
 #pragma once 
 
+#include "massert.hpp"
 #include "message_layout.hpp"
 #include <cstdint>
 #include <variant>
@@ -24,9 +25,11 @@ class PackedMessage {
 
     DataBlock data_;
     std::vector<char> packed_data_;
-    MPI_CUSTOM_TAG tag_;
+    MPI_CUSTOM_TAG tag_ = CSTM_TAG_END;
 
 public:
+    PackedMessage() = default;
+
     PackedMessage(const MessageLayout layout) : 
         tag_(layout.tag()) 
     {
@@ -44,17 +47,13 @@ public:
         using VecT = std::vector<T>;
         
         auto it = data_.find(tag);
-        if (it == data_.end()) {
-            throw std::runtime_error("PackedMessage: Tag " + std::to_string(tag) + " not found in layout.");
-        }
+        massert(it != data_.end(), "Tag " + std::to_string(tag) + " not found in layout.");
+
         auto *vec = std::get_if<VecT>(&(it->second));
-        if (!vec) {
-            throw std::runtime_error("PackedMessage: Type mismatch for tag " + std::to_string(tag));
-        }
+        massert(vec != nullptr, "Type mismatch for tag " + std::to_string(tag));
         
         return *vec;
     }
-
 
     inline MPI_CUSTOM_TAG tag() const { return tag_; }
 
@@ -148,8 +147,9 @@ private:
     }
 
     friend class AsyncSend;
+
     friend void sync_send(const int dest, PackedMessage& message);  
-    friend bool sync_recv(const int source, PackedMessage& message);
+    friend int sync_recv(PackedMessage& message, int source);
 };
 
 }

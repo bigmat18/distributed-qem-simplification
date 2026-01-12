@@ -1,6 +1,3 @@
-#include "logging.hpp"
-#include "massert.hpp"
-#include "qem_mesh.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iosfwd>

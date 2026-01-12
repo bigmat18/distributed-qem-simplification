@@ -1,6 +1,6 @@
-#include "qem_mesh.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <qem_mesh.hpp>
 #include <qem_simp.hpp>
 
 namespace qems {

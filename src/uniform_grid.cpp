@@ -1,7 +1,7 @@
-#include "massert.hpp"
-#include "qem_mesh.hpp"
 #include <utils.hpp>
 #include <cstdint>
+
+#include <qem_mesh.hpp>
 #include <uniform_grid.hpp>
 
 namespace qems {

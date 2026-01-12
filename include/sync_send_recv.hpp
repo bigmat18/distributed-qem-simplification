@@ -4,7 +4,6 @@
 #include <mpi.h>
 
 namespace mpi {
-#define CSTM_TAG_END 0
 
 inline void sync_send(const int dest, PackedMessage& message) {
     const auto tag = message.tag();
@@ -14,7 +13,7 @@ inline void sync_send(const int dest, PackedMessage& message) {
              MPI_PACKED, dest, tag, MPI_COMM_WORLD);
 }
 
-inline bool sync_recv(const int source, PackedMessage& message) {
+inline int sync_recv(PackedMessage& message, int source = MPI_ANY_SOURCE) {
     const auto tag = message.tag();
     MPI_Status status;
     int count;
@@ -23,14 +22,17 @@ inline bool sync_recv(const int source, PackedMessage& message) {
     const auto arrival_tag = status.MPI_TAG;
 
     if (arrival_tag == CSTM_TAG_END || arrival_tag != tag)
-         return false;
+         return -1;
+
+    if (source == MPI_ANY_SOURCE)
+        source = status.MPI_SOURCE;
 
     MPI_Get_count(&status, MPI_PACKED, &count);
     std::vector<char> packed_data(count);
     MPI_Recv(packed_data.data(), count, MPI_PACKED, source, tag, MPI_COMM_WORLD, &status);
     message.unpack_data(std::move(packed_data));
 
-    return true;
+    return source;
 }
 
 }

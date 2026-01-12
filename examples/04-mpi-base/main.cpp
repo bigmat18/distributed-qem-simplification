@@ -31,6 +31,10 @@ enum MPI_TAG {
 };
 
 int main(int argc, char* argv[]) {
+    omlog().disable();
+    omout().disable();
+    omerr().disable();
+
     int provided;
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");

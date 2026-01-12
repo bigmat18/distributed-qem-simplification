@@ -1,4 +1,3 @@
-#include "massert.hpp"
 #include <cstdint>
 #include <utils.hpp>
 #include <octree.hpp>
