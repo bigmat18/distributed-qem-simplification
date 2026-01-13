@@ -1,34 +1,23 @@
-#include "logging.hpp"
-#include "profiling.hpp"
 #include <cstdint>
+#include <sys/time.h>
+#include <unistd.h>
 #include <cxxopts.hpp>
 
-#include <string>
-#include <strings.h>
-#include <filesystem>
-#include <vector>
-
 #include <mpi.h>
-
-#include <qem_mesh.hpp>
-#include <qem_simp.hpp>
-#include <mesh_import.hpp>
-#include <uniform_grid.hpp>
 #include <utils.hpp>
 
+#include "qem_mesh.hpp"
+#include "qem_simp.hpp"
+#include "uniform_grid.hpp"
+#include "mesh_import.hpp"
+
+#define CSTM_TAG_BB 1
+#define CSTM_TAG_VERT 2
+#define CSTM_TAG_FACE 3
+#define CSTM_TAG_NAME 4
+#define CSTM_MESH 5
+
 namespace fs = std::filesystem;
-
-enum MPI_TAG {
-    TAG_SIZE_V      = 0,
-    TAG_DATA_V      = 1,
-    TAG_SIZE_F      = 2,
-    TAG_DATA_F      = 3,
-
-    TAG_BB          = 4,
-    TAG_NAME_LEN    = 5,
-    TAG_NAME_DATA   = 6,
-    TAG_STOP        = 7
-};
 
 int main(int argc, char* argv[]) {
     omlog().disable();
@@ -37,6 +26,7 @@ int main(int argc, char* argv[]) {
 
     int provided;
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,input", "Input Folder", cxxopts::value<std::string>())
@@ -62,7 +52,6 @@ int main(int argc, char* argv[]) {
 
 
 	int pid, num_procs;
-	
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
@@ -113,13 +102,13 @@ int main(int argc, char* argv[]) {
                 vec_buffer[3] = max.x(); vec_buffer[4] = max.y(); vec_buffer[5] = max.z();
 
                 MPI_Isend(vec_buffer.data(), vec_buffer.size(), MPI_DOUBLE, dest, 
-                          TAG_BB, MPI_COMM_WORLD, &requests[index]);
+                          CSTM_TAG_BB, MPI_COMM_WORLD, &requests[index]);
 
                 MPI_Isend(load_data.row_vertices.data(), num_verts, MPI_FLOAT, dest, 
-                          TAG_DATA_V, MPI_COMM_WORLD, &requests[index + 1]); 
+                          CSTM_TAG_VERT, MPI_COMM_WORLD, &requests[index + 1]); 
 
                 MPI_Isend(load_data.row_faces.data(), num_faces, MPI_UNSIGNED, dest, 
-                          TAG_DATA_F, MPI_COMM_WORLD, &requests[index + 2]);
+                          CSTM_TAG_FACE, MPI_COMM_WORLD, &requests[index + 2]);
 
                 active_req_idx = !active_req_idx;
                 current_file_idx++;
@@ -133,23 +122,20 @@ int main(int argc, char* argv[]) {
             int source;
             int count;
 
-            MPI_Probe(MPI_ANY_SOURCE, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            MPI_Probe(MPI_ANY_SOURCE, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
             source = status.MPI_SOURCE;
             MPI_Get_count(&status, MPI_FLOAT, &count);
 
             std::vector<float> vertices;
             vertices.resize(count);
-            MPI_Recv(vertices.data(), count, MPI_FLOAT, source, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            MPI_Recv(vertices.data(), count, MPI_FLOAT, source, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
 
-            MPI_Probe(source, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Probe(source, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_UNSIGNED, &count);
 
             std::vector<uint32_t> faces;
             faces.resize(count);
-            MPI_Recv(faces.data(), count, MPI_UNSIGNED, source, TAG_DATA_F, MPI_COMM_WORLD, &status);
-
-            LOG_INFO("{} received {} vertices and {} faces", pid,
-                     vertices.size() / 3, faces.size() / 3);
+            MPI_Recv(faces.data(), count, MPI_UNSIGNED, source, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
             
             std::string name;
             if (current_file_idx < file_queue.size()) {
@@ -170,8 +156,10 @@ int main(int argc, char* argv[]) {
                     load_data.row_faces.clear();
 
                     qems::import_mesh(file, load_data);
-                    LOG_INFO("{} loading {} vertices and {} faces", pid,
-                             load_data.row_vertices.size() / 3, load_data.row_faces.size() / 3);
+                    LOG_INFO("{} - Imported {} with {} vertices, {} faces", 
+                             pid, name,
+                             load_data.row_vertices.size() / 3, 
+                             load_data.row_faces.size() / 3);
 
                     const auto& min = load_data.min_coords;
                     const auto& max = load_data.max_coords;
@@ -183,13 +171,13 @@ int main(int argc, char* argv[]) {
                     vec_buffer[3] = max.x(); vec_buffer[4] = max.y(); vec_buffer[5] = max.z();
 
                     MPI_Isend(vec_buffer.data(), vec_buffer.size(), MPI_DOUBLE, source, 
-                              TAG_BB, MPI_COMM_WORLD, &requests[index]);
+                              CSTM_TAG_BB, MPI_COMM_WORLD, &requests[index]);
 
                     MPI_Isend(load_data.row_vertices.data(), num_verts, MPI_FLOAT, source, 
-                              TAG_DATA_V, MPI_COMM_WORLD, &requests[index + 1]); 
+                              CSTM_TAG_VERT, MPI_COMM_WORLD, &requests[index + 1]); 
 
                     MPI_Isend(load_data.row_faces.data(), num_faces, MPI_UNSIGNED, source, 
-                              TAG_DATA_F, MPI_COMM_WORLD, &requests[index + 2]);
+                              CSTM_TAG_FACE, MPI_COMM_WORLD, &requests[index + 2]);
 
                     active_req_idx = !active_req_idx;
                     current_file_idx++;
@@ -197,7 +185,7 @@ int main(int argc, char* argv[]) {
                 PROFILING_PRINT();
             } else {
                 double dummy_buf[6];
-                MPI_Send(dummy_buf, 6, MPI_DOUBLE, source, TAG_STOP, MPI_COMM_WORLD);
+                MPI_Send(dummy_buf, 6, MPI_DOUBLE, source, CSTM_TAG_NAME, MPI_COMM_WORLD);
                 active_workers--;
                 name = names_per_worker[source];
                 names_per_worker[source] = "";
@@ -221,24 +209,26 @@ int main(int argc, char* argv[]) {
 
             MPI_Recv(&vec_buffer, 6, MPI_DOUBLE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-            if (status.MPI_TAG == TAG_STOP)
-                break;
-
-            if (status.MPI_TAG != TAG_BB)
+            if (status.MPI_TAG == CSTM_TAG_NAME && status.MPI_TAG != CSTM_TAG_BB)
                 break;
 
             min.x() = vec_buffer[0]; min.y() = vec_buffer[1]; min.z() = vec_buffer[2];
             max.x() = vec_buffer[3]; max.y() = vec_buffer[4]; max.z() = vec_buffer[5];
 
-            MPI_Probe(0, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            MPI_Probe(0, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_FLOAT, &count);
             data.row_vertices.resize(count);
-            MPI_Recv(data.row_vertices.data(), count, MPI_FLOAT, 0, TAG_DATA_V, MPI_COMM_WORLD, &status);
+            MPI_Recv(data.row_vertices.data(), count, MPI_FLOAT, 0, CSTM_TAG_VERT, MPI_COMM_WORLD, &status);
 
-            MPI_Probe(0, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Probe(0, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_UNSIGNED, &count);
             data.row_faces.resize(count);
-            MPI_Recv(data.row_faces.data(), count, MPI_UNSIGNED, 0, TAG_DATA_F, MPI_COMM_WORLD, &status);
+            MPI_Recv(data.row_faces.data(), count, MPI_UNSIGNED, 0, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
+
+            LOG_INFO("{} - Recived {} vertuces, {} faces", 
+                     pid, 
+                     data.row_vertices.size() / 3, 
+                     data.row_faces.size() / 3);
 
             qems::QEMMesh mesh;
             qems::UniformGrid uniform_grid;
@@ -247,177 +237,175 @@ int main(int argc, char* argv[]) {
             mesh.request_edge_status();
             mesh.request_face_status();
             mesh.request_halfedge_status();
-            LOG_INFO("{} received {} vertices and {} faces", pid,
-                     data.row_vertices.size() / 3, data.row_faces.size() / 3);
-            {
-                PROFILING_SCOPE("QEM-Simplification-Rank-" + std::to_string(pid));
-                {
-                    PROFILING_SCOPE("Mesh-Import");
-                    qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
-                }                
+
+            //{
+                //PROFILING_SCOPE("QEM-Sim-Rank-" + std::to_string(pid));
+                //{
+                    //PROFILING_SCOPE("Mesh-Import");
+                    //qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
+                //}                
+
+                //{
+                    //PROFILING_SCOPE("Pre-Processing");
+                    //Eigen::Vector3d &min = data.min_coords;
+                    //Eigen::Vector3d &max = data.max_coords;
+
+                    //uniform_grid = qems::UniformGrid(min, max, 8);
+                    //#pragma omp declare reduction(                                      \
+                        //uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
+                        //initializer(omp_priv = qems::UniformGrid(omp_orig)              \
+                    //)
+
+                    //auto set_neighborhood = [&](qems::QEMMesh::VertexHandle vh) {
+                        //if (!mesh.data(vh).Collasable) 
+                            //return;
+
+                        //for (auto vvh : mesh.vv_range(vh))
+                        //mesh.data(vvh).Collasable = false;
+                    //};
+
+                    //PROFILING_LOCK();
+                    //#pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
+                    //{
+                        //PROFILING_SCOPE("Uniform-Grid-Building");
+                        //{
+                            //#pragma omp for schedule(static) 
+                            //for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+                                //auto vh = qems::QEMMesh::VertexHandle(i);
+                                //mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
+                                //uint32_t idx = uniform_grid.add_vertex(mesh, vh);
+                                //mesh.data(vh).NodeIdx = idx;
+                            //}
 
 
-                {
-                    PROFILING_SCOPE("Pre-Processing");
-                    Eigen::Vector3d &min = data.min_coords;
-                    Eigen::Vector3d &max = data.max_coords;
+                            //#pragma omp for schedule(static)  
+                            //for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                                //auto eh = qems::QEMMesh::EdgeHandle(i);
+                                //auto heh = mesh.halfedge_handle(eh, 0);
+                                //auto vh0 = mesh.from_vertex_handle(heh);
+                                //auto vh1 = mesh.to_vertex_handle(heh);
 
-                    uniform_grid = qems::UniformGrid(min, max, 8);
-                    #pragma omp declare reduction(                                      \
-                        uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
-                        initializer(omp_priv = qems::UniformGrid(omp_orig)              \
-                    )
+                                //uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                                //uint32_t idx1 = mesh.data(vh1).NodeIdx;
 
-                    auto set_neighborhood = [&](qems::QEMMesh::VertexHandle vh) {
-                        if (!mesh.data(vh).Collasable) 
-                            return;
+                                //if (idx0 != idx1) {
+                                    //mesh.data(vh0).Collasable = false;
+                                    //mesh.data(vh1).Collasable = false;
 
-                        for (auto vvh : mesh.vv_range(vh))
-                        mesh.data(vvh).Collasable = false;
-                    };
+                                    //set_neighborhood(vh0);
+                                    //set_neighborhood(vh1);
+                                //} 
+                            //}
 
-                    PROFILING_LOCK();
-                    #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
-                    {
-                        PROFILING_SCOPE("Uniform-Grid-Building");
-                        {
-                            #pragma omp for schedule(static) 
-                            for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-                                auto vh = qems::QEMMesh::VertexHandle(i);
-                                mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                                uint32_t idx = uniform_grid.add_vertex(mesh, vh);
-                                mesh.data(vh).NodeIdx = idx;
-                            }
+                            //#pragma omp for schedule(static)
+                            //for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                                //auto eh = qems::QEMMesh::EdgeHandle(i);
 
+                                //if(uniform_grid.add_edge(mesh, eh)) {
+                                    //auto heh = mesh.halfedge_handle(eh, 0);
+                                    //auto vh0 = mesh.from_vertex_handle(heh);
+                                    //auto vh1 = mesh.to_vertex_handle(heh);
 
-                            #pragma omp for schedule(static)  
-                            for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                                auto eh = qems::QEMMesh::EdgeHandle(i);
-                                auto heh = mesh.halfedge_handle(eh, 0);
-                                auto vh0 = mesh.from_vertex_handle(heh);
-                                auto vh1 = mesh.to_vertex_handle(heh);
+                                    //Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                                    //Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
-                                uint32_t idx0 = mesh.data(vh0).NodeIdx;
-                                uint32_t idx1 = mesh.data(vh1).NodeIdx;
+                                    //mesh.data(eh).Error = newV.transpose() * Q * newV;
+                                    //mesh.data(eh).NewVertex = newV;
+                                //}
+                            //}
 
-                                if (idx0 != idx1) {
-                                    mesh.data(vh0).Collasable = false;
-                                    mesh.data(vh1).Collasable = false;
+                            //#pragma omp for schedule(static)
+                            //for(size_t i = 0; i < mesh.n_faces(); i++) {
+                                //auto fh = qems::QEMMesh::FaceHandle(i);
+                                //uniform_grid.increment_collasable_faces(mesh, fh);
+                            //}
+                        //}
 
-                                    set_neighborhood(vh0);
-                                    set_neighborhood(vh1);
-                                } 
-                            }
+                    //}
+                    //PROFILING_UNLOCK();
+                //}
 
-                            #pragma omp for schedule(static)
-                            for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                                auto eh = qems::QEMMesh::EdgeHandle(i);
+                //{
+                    //PROFILING_SCOPE("Processing");
 
-                                if(uniform_grid.add_edge(mesh, eh)) {
-                                    auto heh = mesh.halfedge_handle(eh, 0);
-                                    auto vh0 = mesh.from_vertex_handle(heh);
-                                    auto vh1 = mesh.to_vertex_handle(heh);
+                    //#pragma omp parallel for schedule(dynamic, 1)
+                    //for (const auto &cell : uniform_grid) {
+                        //auto pq = qems::QEMPriorityQueue(qems::QEMEdgeCompare(mesh), cell.edges);
 
-                                    Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
-                                    Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
+                        //uint32_t local_num_faces = cell.collasable_faces; 
+                        //float total_faces = static_cast<float>(uniform_grid.total_collasable_faces());
+                        //float cell_faces  = static_cast<float>(local_num_faces);
 
-                                    mesh.data(eh).Error = newV.transpose() * Q * newV;
-                                    mesh.data(eh).NewVertex = newV;
-                                }
-                            }
+                        //float fraction = (total_faces > 0.0) ? (cell_faces / total_faces) : 0.0;
+                        //float target_d = static_cast<float>(TARGET_FACES) * fraction;
 
-                            #pragma omp for schedule(static)
-                            for(size_t i = 0; i < mesh.n_faces(); i++) {
-                                auto fh = qems::QEMMesh::FaceHandle(i);
-                                uniform_grid.increment_collasable_faces(mesh, fh);
-                            }
-                        }
+                        //uint32_t local_target = static_cast<uint32_t>(std::floor(target_d));
 
-                    }
-                    PROFILING_UNLOCK();
-                }
+                        //qems::simplification(mesh, local_target, local_num_faces, pq);
+                    //}
+                //}
 
-                {
-                    PROFILING_SCOPE("Processing");
+                //{
+                    //PROFILING_SCOPE("Mesh-Cleanup");
+                    //mesh.garbage_collection();
+                //}
 
-                    #pragma omp parallel for schedule(dynamic, 1)
-                    for (const auto &cell : uniform_grid) {
-                        auto pq = qems::QEMPriorityQueue(qems::QEMEdgeCompare(mesh), cell.edges);
+                //{
+                    //PROFILING_SCOPE("Refinements");
+                    //std::vector<qems::QEMMesh::EdgeHandle> edges;
+                    //edges.reserve(mesh.n_edges());
 
-                        uint32_t local_num_faces = cell.collasable_faces; 
-                        float total_faces = static_cast<float>(uniform_grid.total_collasable_faces());
-                        float cell_faces  = static_cast<float>(local_num_faces);
+                    //#pragma omp parallel
+                    //{
+                        //std::vector<qems::QEMMesh::EdgeHandle> local_edges;
+                        //size_t n = mesh.n_edges();
+                        //int num_threads = omp_get_num_threads();
+                        //local_edges.reserve((n + num_threads - 1) / num_threads);
 
-                        float fraction = (total_faces > 0.0) ? (cell_faces / total_faces) : 0.0;
-                        float target_d = static_cast<float>(TARGET_FACES) * fraction;
+                        //#pragma omp for schedule(static) 
+                        //for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+                            //auto vh = qems::QEMMesh::VertexHandle(i);
+                            //mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
+                        //}
+                        //#pragma omp for schedule(static)  
+                        //for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                            //auto eh = qems::QEMMesh::EdgeHandle(i);
+                            //auto heh = mesh.halfedge_handle(eh, 0);
+                            //auto vh0 = mesh.from_vertex_handle(heh);
+                            //auto vh1 = mesh.to_vertex_handle(heh);
 
-                        uint32_t local_target = static_cast<uint32_t>(std::floor(target_d));
+                            //Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                            //Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
-                        qems::simplification(mesh, local_target, local_num_faces, pq);
-                    }
-                }
+                            //mesh.data(eh).Error = newV.transpose() * Q * newV;
+                            //mesh.data(eh).NewVertex = newV;
+                            //local_edges.push_back(eh);
+                        //}
 
-                {
-                    PROFILING_SCOPE("Mesh-Cleanup");
-                    mesh.garbage_collection();
-                }
+                        //#pragma omp critical
+                        //{
+                            //edges.insert(edges.end(),
+                                         //local_edges.begin(),
+                                         //local_edges.end());
+                        //}
+                    //}
 
-                {
-                    PROFILING_SCOPE("Refinements");
-                    std::vector<qems::QEMMesh::EdgeHandle> edges;
-                    edges.reserve(mesh.n_edges());
-
-                    #pragma omp parallel
-                    {
-                        std::vector<qems::QEMMesh::EdgeHandle> local_edges;
-                        size_t n = mesh.n_edges();
-                        int num_threads = omp_get_num_threads();
-                        local_edges.reserve((n + num_threads - 1) / num_threads);
-
-                        #pragma omp for schedule(static) 
-                        for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-                            auto vh = qems::QEMMesh::VertexHandle(i);
-                            mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                        }
-                        #pragma omp for schedule(static)  
-                        for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                            auto eh = qems::QEMMesh::EdgeHandle(i);
-                            auto heh = mesh.halfedge_handle(eh, 0);
-                            auto vh0 = mesh.from_vertex_handle(heh);
-                            auto vh1 = mesh.to_vertex_handle(heh);
-
-                            Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
-                            Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
-
-                            mesh.data(eh).Error = newV.transpose() * Q * newV;
-                            mesh.data(eh).NewVertex = newV;
-                            local_edges.push_back(eh);
-                        }
-
-                        #pragma omp critical
-                        {
-                            edges.insert(edges.end(),
-                                         local_edges.begin(),
-                                         local_edges.end());
-                        }
-                    }
-
-                    qems::QEMPriorityQueue pq(qems::QEMEdgeCompare(mesh), edges);
-                    qems::simplification(mesh, TARGET_FACES, mesh.n_faces(), pq);
-                    mesh.garbage_collection();
-                }
-            }
-            PROFILING_PRINT();
+                    //qems::QEMPriorityQueue pq(qems::QEMEdgeCompare(mesh), edges);
+                    //qems::simplification(mesh, TARGET_FACES, mesh.n_faces(), pq);
+                    //mesh.garbage_collection();
+                //}
+            //}
+            //PROFILING_PRINT();
 
             std::vector<float> vertices;
             std::vector<uint32_t> faces;
             qems::mesh_to_row_data(mesh, vertices, faces);
 
             MPI_Send(vertices.data(), vertices.size(), 
-                     MPI_FLOAT, 0, TAG_DATA_V, MPI_COMM_WORLD);
+                     MPI_FLOAT, 0, CSTM_TAG_VERT, MPI_COMM_WORLD);
 
             MPI_Send(faces.data(), faces.size(), 
-                     MPI_UNSIGNED, 0, TAG_DATA_F, MPI_COMM_WORLD);
+                     MPI_UNSIGNED, 0, CSTM_TAG_FACE, MPI_COMM_WORLD);
         }
     }
     MPI_Finalize();

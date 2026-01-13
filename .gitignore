@@ -5,7 +5,6 @@
 *.slo
 *.lo
 *.o
-*.obj
 
 # Precompiled Headers
 *.gch
@@ -40,11 +39,9 @@
 # debug information files
 *.dwo
 
-
 build/
 .cache/
-tests/
-.venv/
 out/
 legacy/
 stanford/
+perf/
