@@ -23,6 +23,7 @@ class PackedMessage {
         >
     >;
 
+    bool status_ = true; // true = unpacked_data, false = packed_data
     DataBlock data_;
     std::vector<char> packed_data_;
     MPI_CUSTOM_TAG tag_ = CSTM_TAG_END;
@@ -44,6 +45,7 @@ public:
 
     template<typename T> requires MessageSupportedTypes<T>
     std::vector<T>& get_buffer(const MPI_CUSTOM_TAG tag) {
+        massert(status_, "Data packed can't be get");
         using VecT = std::vector<T>;
         
         auto it = data_.find(tag);
@@ -60,6 +62,7 @@ public:
 private:
 
     const std::vector<char>& pack_data() {
+        massert(status_, "Data already packed");
         packed_data_.clear();
         std::size_t total_size = 0;
 
@@ -102,11 +105,12 @@ private:
                 buffer.shrink_to_fit();
             }, value);
         }
-        packed_data_.resize(position);
+        status_ = false;
         return packed_data_;
     } 
 
     void unpack_data(std::vector<char> packed_data) {
+        massert(!status_, "Data already unpacked");
         int position = 0;
         uint32_t total_size = static_cast<uint32_t>(packed_data.size());
 
@@ -128,10 +132,11 @@ private:
             }, value);
         }
         packed_data.clear();
+        status_ = true;
     }
 
     template<typename T>
-    constexpr MPI_Datatype get_mpi_type() noexcept {
+    static constexpr MPI_Datatype get_mpi_type() noexcept {
         if constexpr (std::is_same_v<T, int>)           return MPI_INT;
         else if constexpr (std::is_same_v<T, double>)   return MPI_DOUBLE;
         else if constexpr (std::is_same_v<T, uint32_t>) return MPI_UINT32_T;
@@ -146,10 +151,14 @@ private:
         }
     }
 
+    template <bool packed>
     friend class AsyncSend;
 
-    friend void sync_send(const int dest, PackedMessage& message);  
-    friend int sync_recv(PackedMessage& message, int source);
+    template <bool packed>
+    friend void __sync_send(const int dest, PackedMessage& message);  
+
+    template <bool packed>
+    friend int __sync_recv(PackedMessage& message, int source);
 };
 
 }

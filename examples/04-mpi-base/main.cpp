@@ -191,9 +191,9 @@ int main(int argc, char* argv[]) {
                 names_per_worker[source] = "";
             }
 
-            qems::QEMMesh mesh;
-            qems::row_data_to_mesh(vertices, faces, mesh);
-            massert(OpenMesh::IO::write_mesh(mesh, "out/"+ name), "Error in mesh export!");
+            //qems::QEMMesh mesh;
+            //qems::row_data_to_mesh(vertices, faces, mesh);
+            //massert(OpenMesh::IO::write_mesh(mesh, "out/"+ name), "Error in mesh export!");
         }
     } else {
         double vec_buffer[6];
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
             data.row_faces.resize(count);
             MPI_Recv(data.row_faces.data(), count, MPI_UNSIGNED, 0, CSTM_TAG_FACE, MPI_COMM_WORLD, &status);
 
-            LOG_INFO("{} - Recived {} vertuces, {} faces", 
+            LOG_INFO("{} - Recived {} vertices, {} faces", 
                      pid, 
                      data.row_vertices.size() / 3, 
                      data.row_faces.size() / 3);
@@ -399,7 +399,7 @@ int main(int argc, char* argv[]) {
 
             std::vector<float> vertices;
             std::vector<uint32_t> faces;
-            qems::mesh_to_row_data(mesh, vertices, faces);
+            //qems::mesh_to_row_data(mesh, vertices, faces);
 
             MPI_Send(vertices.data(), vertices.size(), 
                      MPI_FLOAT, 0, CSTM_TAG_VERT, MPI_COMM_WORLD);

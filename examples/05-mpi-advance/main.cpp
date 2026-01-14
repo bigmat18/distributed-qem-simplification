@@ -59,7 +59,6 @@ int main(int argc, char* argv[]) {
 
     mpi::MessageLayout layout(CSTM_MESH);
     layout 
-     .add_buffer<char>(CSTM_TAG_NAME)
      .add_buffer<double>(CSTM_TAG_BB)
      .add_buffer<float>(CSTM_TAG_VERT)
      .add_buffer<uint32_t>(CSTM_TAG_FACE);
@@ -72,7 +71,8 @@ int main(int argc, char* argv[]) {
 
         uint32_t current_file_idx = 0;
         uint32_t active_workers = 0;
-        mpi::AsyncSend send(layout);
+        mpi::UnpackedAsyncSend send(layout);
+        qems::MeshData load_data;
 
         for (int dest = 1; dest < num_procs; ++dest) {
             if (current_file_idx >= files.size()) 
@@ -81,9 +81,8 @@ int main(int argc, char* argv[]) {
             const auto& file = files[current_file_idx];
             const std::string name = file.filename().string();
             {
-                PROFILING_SCOPE("Sending-" + file.filename().string());
+                PROFILING_SCOPE("Sending-" + name);
 
-                qems::MeshData load_data;
                 qems::import_mesh(file, load_data);
                 LOG_INFO("{} - Imported {} with {} vertices, {} faces", 
                          pid, name,
@@ -97,10 +96,7 @@ int main(int argc, char* argv[]) {
                 bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
                 bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
-                std::vector<char> char_name(name.begin(), name.end());
-
                 send.isend(dest, {
-                    {CSTM_TAG_NAME, std::move(char_name)},
                     {CSTM_TAG_BB, std::move(bb)},
                     {CSTM_TAG_VERT, std::move(load_data.row_vertices)},
                     {CSTM_TAG_FACE, std::move(load_data.row_faces)}
@@ -114,39 +110,33 @@ int main(int argc, char* argv[]) {
 
         mpi::PackedMessage end_msg;
         mpi::PackedMessage msg(layout);
-        const auto& name = msg.get_buffer<char>(CSTM_TAG_NAME);
         const auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
         const auto& vertices = msg.get_buffer<float>(CSTM_TAG_VERT);
         const auto& faces = msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
 
         while(active_workers > 0) {
-            int dest = sync_recv(msg); 
+            int dest = mpi::unpacked_sync_recv(msg); 
 
             if (current_file_idx < files.size()) {
                 const auto& file = files[current_file_idx];
-                const std::string name = file.filename().string();
 
                 {
                     PROFILING_SCOPE("Sending-" + file.filename().string());
 
-                    qems::MeshData load_data;
                     qems::import_mesh(file, load_data);
-                    LOG_INFO("{} - Imported {} with {} vertices, {} faces", 
-                             pid, name,
+                    LOG_INFO("{} - Imported {} vertices, {} faces", 
+                             pid,
                              load_data.row_vertices.size() / 3, 
                              load_data.row_faces.size() / 3);
 
                     const auto& min = load_data.min_coords;
                     const auto& max = load_data.max_coords;
 
-                    std::vector<char> char_name(name.begin(), name.end());
-
                     std::vector<double> bb(6);
                     bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
                     bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
                     send.isend(dest, {
-                        {CSTM_TAG_NAME, std::move(char_name)},
                         {CSTM_TAG_BB, std::move(bb)},
                         {CSTM_TAG_VERT, std::move(load_data.row_vertices)},
                         {CSTM_TAG_FACE, std::move(load_data.row_faces)}
@@ -154,42 +144,40 @@ int main(int argc, char* argv[]) {
 
                     current_file_idx++;
                 }
-                PROFILING_PRINT();
+               PROFILING_PRINT();
 
             } else {
-                mpi::sync_send(dest, end_msg);
+                mpi::unpacked_sync_send(dest, end_msg);
                 active_workers--;
             }
 
-            qems::QEMMesh mesh;
-            qems::row_data_to_mesh(vertices, faces, mesh);
-            std::string final_name(name.begin(), name.end());
-            massert(OpenMesh::IO::write_mesh(mesh, "out/" + final_name), "Error in mesh export!");
+            //qems::QEMMesh mesh;
+            //qems::row_data_to_mesh(vertices, faces, mesh);
+            //std::string final_name(name.begin(), name.end());
+            //massert(OpenMesh::IO::write_mesh(mesh, "out/" + final_name), "Error in mesh export!");
         }
 
     } else {
-        mpi::PackedMessage msg(layout);
-        auto& name = msg.get_buffer<char>(CSTM_TAG_NAME);
-        auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
-        auto& vertices = msg.get_buffer<float>(CSTM_TAG_VERT);
-        auto& faces = msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
+        mpi::PackedMessage input_msg(layout);
+        mpi::PackedMessage output_msg(layout);
+        auto& bb = input_msg.get_buffer<double>(CSTM_TAG_BB);
+        auto& vertices = input_msg.get_buffer<float>(CSTM_TAG_VERT);
+        auto& faces = input_msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
 
         Eigen::Vector3d min, max;
 
         while (true) {
-            if (mpi::sync_recv(msg,0) == -1) 
+            if (mpi::unpacked_sync_recv(input_msg, 0) == -1) 
                 break;
 
-            std::string final_name(name.begin(), name.end());
-            LOG_INFO("{} - Recived {} with {} vertuces, {} faces", 
-                     pid, final_name,
+            LOG_INFO("{} - Recived {} vertices, {} faces", 
+                     pid,
                      vertices.size() / 3, 
                      faces.size() / 3);
 
 
             min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2];
             max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5];
-
 
             qems::QEMMesh mesh;
             qems::UniformGrid uniform_grid;
@@ -356,9 +344,11 @@ int main(int argc, char* argv[]) {
                 //}
             //}
             //PROFILING_PRINT();
+            //auto& out_verts = output_msg.get_buffer<float>(CSTM_TAG_VERT);
+            //auto& out_faces = output_msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
 
-            qems::mesh_to_row_data(mesh, vertices, faces);
-            mpi::sync_send(0, msg);
+            //qems::mesh_to_row_data(mesh, out_verts, out_faces);
+            mpi::unpacked_sync_send(0, output_msg);
         }
     }
 
