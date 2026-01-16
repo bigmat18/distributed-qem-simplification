@@ -3,8 +3,8 @@
 set -e
 
 BUILD_TYPES=("Debug" "Release" "RelWithDebInfo")
-DATA_FOLDER="assets/stanford"
-TARGET=100000
+DATA_FOLDER="/home/bigmat18/Utils/VCLab_DS_PLY"
+TARGET=100
 
 TYPE=""
 EXE=""

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.26)
 project(qems-examples)
 
 set(EXAMPLES 
+    scripts
     01-sequential
     02-omp-uniform
     03-omp-octree

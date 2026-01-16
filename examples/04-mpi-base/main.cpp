@@ -36,18 +36,18 @@ int main(int argc, char* argv[]) {
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,input", "Input Folder", cxxopts::value<std::string>())
-        ("n,target", "Target faces", cxxopts::value<uint32_t>());
-
+        ("n,meshes", "Num meshes", cxxopts::value<uint32_t>());
+ 
     options.parse_positional({"input"});
     auto result = options.parse(argc, argv);
-
-    if(result.count("help")) {
+ 
+    if(result.count("help")) { 
         printf("%s", options.help().c_str()); 
-        return 0;
-    }
-
+        return 0; 
+    } 
+ 
     const std::string INPUT           = result["input"].as<std::string>();
-    const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
+    const uint32_t    NUM_MESHES      = result["meshes"].as<uint32_t>();
 
     massert(fs::exists("out") && fs::is_directory("out"), 
             "out folder does not exists");
@@ -67,9 +67,16 @@ int main(int argc, char* argv[]) {
 
     if (pid == 0) {
         std::vector<fs::path> files;
-        for (const auto& file : fs::directory_iterator(INPUT))
-        if (fs::is_regular_file(file.status()))
-            files.push_back(file);
+        uint32_t file_insert = 0;
+        for (const auto& file : fs::directory_iterator(INPUT)) {
+            if (file_insert > NUM_MESHES)
+                break;
+
+            if (fs::is_regular_file(file.status())) {
+                files.push_back(file);
+                file_insert++;
+            }
+        }
 
         uint32_t current_file_idx = 0;
         uint32_t active_workers = 0;
@@ -194,6 +201,9 @@ int main(int argc, char* argv[]) {
                      pid, str_name,
                      vertices.size() / 3, 
                      faces.size() / 3);
+
+            const uint32_t TOTAL_FACES  = faces.size() / 3;
+            const uint32_t TARGET_FACES = (TOTAL_FACES * 20) / 100;
 
             min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2]; 
             max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5];
