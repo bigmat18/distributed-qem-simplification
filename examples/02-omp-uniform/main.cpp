@@ -1,6 +1,3 @@
-#include "logging.hpp"
-#include "mesh_import.hpp"
-#include "profiling.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <omp.h>
@@ -9,6 +6,7 @@
 
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
+#include <mesh_import.hpp>
 #include <uniform_grid.hpp>
 #include <utils.hpp>
 
@@ -31,7 +29,13 @@ int main(int argc, char **argv) {
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
 
-    qems::MeshData data;
+    qems::MeshMetaData metadata;
+    std::vector<float> vertices;
+    std::vector<uint32_t> faces;
+
+    Eigen::Vector3d &min = metadata.min_coords;
+    Eigen::Vector3d &max = metadata.max_coords;
+
     qems::QEMMesh mesh;
     qems::UniformGrid uniform_grid;
 
@@ -44,16 +48,14 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            qems::import_mesh(FILENAME, data);
-            qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
+            qems::import_mesh(FILENAME, metadata, vertices, faces);
+            qems::row_data_to_mesh(vertices, faces, mesh);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());
 
         {
             PROFILING_SCOPE("Pre-Processing");
-            Eigen::Vector3d &min = data.min_coords;
-            Eigen::Vector3d &max = data.max_coords;
 
             uniform_grid = qems::UniformGrid(min, max, omp_get_max_threads() / 2);
             #pragma omp declare reduction(                                      \

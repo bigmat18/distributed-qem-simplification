@@ -1,5 +1,4 @@
 #pragma once
-#include <filesystem>
 #include <queue>
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>

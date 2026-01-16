@@ -1,6 +1,3 @@
-#include "logging.hpp"
-#include "mesh_import.hpp"
-#include "profiling.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cxxopts.hpp>
@@ -33,7 +30,13 @@ int main(int argc, char **argv) {
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
     const bool        EXPORT_WF       = result["wireframe"].as<bool>();
 
-    qems::MeshData data;
+    qems::MeshMetaData metadata;
+    std::vector<float> vertices;
+    std::vector<uint32_t> faces;
+
+    Eigen::Vector3d &min = metadata.min_coords;
+    Eigen::Vector3d &max = metadata.max_coords;
+
     qems::QEMMesh mesh;
     qems::Octree octree;
 
@@ -47,15 +50,13 @@ int main(int argc, char **argv) {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
-            qems::import_mesh(FILENAME, data);
-            qems::row_data_to_mesh(data.row_vertices, data.row_faces, mesh);
+            qems::import_mesh(FILENAME, metadata, vertices, faces);
+            qems::row_data_to_mesh(vertices, faces, mesh);
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());
         {
             PROFILING_SCOPE("Pre-Processing");
-            Eigen::Vector3d &min = data.min_coords;
-            Eigen::Vector3d &max = data.max_coords;
 
             uint32_t limit = mesh.n_vertices() / omp_get_max_threads();
             octree = qems::Octree(min, max, limit);

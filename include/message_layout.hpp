@@ -38,34 +38,36 @@ class MessageLayout {
         MessageLayoutTypes::Float,
         MessageLayoutTypes::Double
     >;
+    // Pair contain {SUPPORTED_DATA_TYPES, size}
+    using LAYOUT_ELEMENT = std::pair<SUPPORTED_DATA_TYPES, uint32_t>;
 
     MPI_CUSTOM_TAG tag_;
-    std::map<MPI_CUSTOM_TAG, SUPPORTED_DATA_TYPES> layout_;
+    std::map<MPI_CUSTOM_TAG, LAYOUT_ELEMENT> layout_;
 
 public:
-    using value_type      = std::pair<MPI_CUSTOM_TAG, SUPPORTED_DATA_TYPES>;
-    using iterator        = std::map<MPI_CUSTOM_TAG, SUPPORTED_DATA_TYPES>::iterator;
-    using const_iterator  = std::map<MPI_CUSTOM_TAG, SUPPORTED_DATA_TYPES>::const_iterator;
+    using value_type      = std::pair<MPI_CUSTOM_TAG, LAYOUT_ELEMENT>;
+    using iterator        = std::map<MPI_CUSTOM_TAG, LAYOUT_ELEMENT>::iterator;
+    using const_iterator  = std::map<MPI_CUSTOM_TAG, LAYOUT_ELEMENT>::const_iterator;
 
     MessageLayout(MPI_CUSTOM_TAG tag = CSTM_TAG_END) : tag_(tag) {};
 
-    template<typename T> requires MessageSupportedTypes<T>
+    template<typename T, uint32_t size = 0> requires MessageSupportedTypes<T>
     MessageLayout& add_buffer(const MPI_CUSTOM_TAG tag) { 
-        layout_.try_emplace(tag, MessageLayoutTypes::Type<T>{});
+        layout_.try_emplace(tag, std::make_pair(MessageLayoutTypes::Type<T>{}, size));
         return *this;
     }
 
     inline MPI_CUSTOM_TAG tag() const { return tag_; }
 
-    iterator begin() { return layout_.begin(); }
-    iterator end()   { return layout_.end(); }
+    iterator begin() noexcept { return layout_.begin(); }
+    iterator end()   noexcept { return layout_.end(); }
 
-    const_iterator begin()  const { return layout_.begin(); }
-    const_iterator end()    const { return layout_.end(); }
-    const_iterator cbegin() const { return layout_.cbegin(); }
-    const_iterator cend()   const { return layout_.cend(); }
+    const_iterator begin()  const noexcept { return layout_.begin(); }
+    const_iterator end()    const noexcept { return layout_.end(); }
+    const_iterator cbegin() const noexcept { return layout_.cbegin(); }
+    const_iterator cend()   const noexcept { return layout_.cend(); }
 
-    std::size_t size() const { return layout_.size(); }
+    std::size_t size() const noexcept { return layout_.size(); }
 };
 
 }

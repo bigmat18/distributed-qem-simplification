@@ -1,33 +1,28 @@
 #pragma once 
 
 #include <cstdint>
-#include <optional>
 #include <string>
+#include <filesystem>
 #include <vector>
 
-#include "qem_mesh.hpp"
+#include <Eigen/Dense>
 
 namespace qems {
 
-struct MeshData {
+struct MeshMetaData {
     std::string name;
     std::string type;
-
-    std::vector<float> row_vertices;
-    std::vector<uint32_t> row_faces;
 
     Eigen::Vector3d min_coords;
     Eigen::Vector3d max_coords;
 };
 
-namespace detail {
+void import_mesh(const std::filesystem::path path, 
+                 MeshMetaData& metadata,
+                 std::vector<float>& vertices,
+                 std::vector<uint32_t>& faces);
 
-void import_ply(const std::filesystem::path path, MeshData& data);
-
-void import_obj(const std::filesystem::path path, MeshData& data);
-
-}
-
-void import_mesh(const std::filesystem::path path, MeshData& data);
-
+inline void export_mesh(const std::filesystem::path path,
+                 const std::vector<float>& vertices,
+                 const std::vector<uint32_t>& faces) {}
 }

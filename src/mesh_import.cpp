@@ -1,3 +1,4 @@
+#include "massert.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iosfwd>
@@ -7,9 +8,14 @@
 
 namespace qems {
 
-namespace detail {
+void import_mesh(const std::filesystem::path path, 
+                 MeshMetaData& metadata,
+                 std::vector<float>& vertices,
+                 std::vector<uint32_t>& faces)
+{
+    massert(path.has_extension() && path.extension() == ".ply", 
+            "File must be a .ply");
 
-void import_ply(const std::filesystem::path path, MeshData& data) {
     std::ifstream file(path, std::ios::binary); 
     massert(file.is_open(), "Error: Failed to open PLY file.");
 
@@ -53,8 +59,8 @@ void import_ply(const std::filesystem::path path, MeshData& data) {
     massert(num_vertices > 0, "Error: PLY file does not declare vertices.");
     file.close();
 
-    data.type = ".ply";
-    data.name = path.filename();
+    metadata.type = ".ply";
+    metadata.name = path.filename();
 
     int max_threads = omp_get_max_threads();
 
@@ -184,10 +190,10 @@ void import_ply(const std::filesystem::path path, MeshData& data) {
     }
 
     size_t vert_offset = 0;
-    std::vector<float> &vertices = data.row_vertices;
-    std::vector<uint32_t> &faces = data.row_faces;
 
+    vertices.clear();
     vertices.reserve(num_vertices * 3);
+
     for(int i=0; i<max_threads; ++i) {
         if (local_vertices[i].empty()) continue;
 
@@ -196,38 +202,22 @@ void import_ply(const std::filesystem::path path, MeshData& data) {
                         local_vertices[i].end());
         vert_offset += local_vertices[i].size();
 
-        data.min_coords = data.min_coords.cwiseMin(local_min[i]);
-        data.max_coords = data.max_coords.cwiseMax(local_max[i]);
+        metadata.min_coords = metadata.min_coords.cwiseMin(local_min[i]);
+        metadata.max_coords = metadata.max_coords.cwiseMax(local_max[i]);
     }
 
     size_t total_indices = 0;
     for(const auto& face : local_faces) 
         total_indices += face.size();
    
+    faces.clear();
     faces.reserve(total_indices);
+
     for(int i=0; i<max_threads; ++i) {
         faces.insert(faces.end(), 
                      local_faces[i].begin(), 
                      local_faces[i].end());
     }
-}
-
-void import_obj(const std::filesystem::path path, MeshData& data) 
-{
-    massert(false, ".obj not supported");
-}
-
-}
-
-void import_mesh(const std::filesystem::path path, MeshData& data) {
-    std::string ext = path.extension().string();
-
-    if (ext == ".obj")
-        detail::import_obj(path, data);
-    else if (ext == ".ply")
-        detail::import_ply(path, data);
-    else
-        massert(false, "Only .ply and .obj supported");
 }
 
 }
