@@ -174,10 +174,6 @@ int main(int argc, char* argv[]) {
                 active_workers--;
             }
 
-            LOG_INFO("{} - Simplication received {} vertices, {} faces", 
-                     pid,
-                     recv_vertices.size() / 3,
-                     recv_faces.size() / 3);
             qems::row_data_to_mesh(recv_vertices, recv_faces, mesh);
             std::string out_name(recv_name.data(), recv_name.size());
             massert(OpenMesh::IO::write_mesh(mesh, "out/" + out_name), "Error in mesh export!");
@@ -197,13 +193,6 @@ int main(int argc, char* argv[]) {
                 break;
 
             std::string str_name(name.data(), name.size());
-            LOG_INFO("{} - Received {} with {} vertices, {} faces", 
-                     pid, str_name,
-                     vertices.size() / 3, 
-                     faces.size() / 3);
-
-            const uint32_t TOTAL_FACES  = faces.size() / 3;
-            const uint32_t TARGET_FACES = (TOTAL_FACES * 20) / 100;
 
             min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2]; 
             max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5];
@@ -222,6 +211,14 @@ int main(int argc, char* argv[]) {
                     PROFILING_SCOPE("Mesh-Import");
                     qems::row_data_to_mesh(vertices, faces, mesh);
                 }      
+
+                const uint32_t TARGET_FACES = static_cast<uint32_t>(mesh.n_faces() * 0.2f);
+                LOG_INFO("{} - Received {} with {} vertices, {} faces, target {}", 
+                         pid, str_name,
+                         vertices.size() / 3, 
+                         faces.size() / 3,
+                         TARGET_FACES);
+
 
                 {
                     PROFILING_SCOPE("Pre-Processing");
@@ -267,9 +264,6 @@ int main(int argc, char* argv[]) {
                                 if (idx0 != idx1) {
                                     mesh.data(vh0).Collasable = false;
                                     mesh.data(vh1).Collasable = false;
-
-                                    set_neighborhood(vh0);
-                                    set_neighborhood(vh1);
                                 } 
                             }
 

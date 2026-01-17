@@ -3,8 +3,8 @@
 set -e
 
 BUILD_TYPES=("Debug" "Release" "RelWithDebInfo")
-DATA_FOLDER="/home/bigmat18/Utils/VCLab_DS_PLY"
-TARGET=100
+DATA_FOLDER="assets/vclab"
+TARGET="600"
 
 TYPE=""
 EXE=""
@@ -53,6 +53,10 @@ while [ "$#" -gt 0 ]; do
       NUM_MASTER_THREADS="$2"
       shift 2
       ;;
+    -t)
+        TARGET="$2"
+     shift 2
+     ;;
     -pm)
       PROFILE_MASTER=true
       shift 1

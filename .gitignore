@@ -45,3 +45,5 @@ out/
 legacy/
 stanford/
 perf/
+.venv/
+vclab/
