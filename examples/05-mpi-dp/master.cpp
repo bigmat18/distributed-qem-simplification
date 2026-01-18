@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <string>
 #include <sys/time.h>
 #include <unistd.h>
 #include <cxxopts.hpp>
@@ -6,6 +7,7 @@
 #include <mpi.h>
 #include <utils.hpp>
 
+#include "profiling.hpp"
 #include "qem_mesh.hpp"
 #include "ug_row_data.hpp"
 #include "mesh_import.hpp"
@@ -57,13 +59,32 @@ int main (int argc, char *argv[]) {
     qems::MeshMetaData metadata;
     std::vector<float> vertices;
     std::vector<uint32_t> faces;
-    qems::import_mesh(file, metadata, vertices, faces);
+    mpi::UniformGridRow uniform_grid;
 
-    auto ung = mpi::UniformGridRow(vertices, faces, metadata.min_coords, metadata.max_coords);
+    {
+        PROFILING_SCOPE("Test");
 
-    ung.merge_cells(vertices, faces);
-    qems::export_mesh("out/" + metadata.name, vertices, faces); 
+        {
+            PROFILING_SCOPE("Import");
+            qems::import_mesh("assets/stanford/stanford_lucy.ply", metadata, vertices, faces);
+        }
 
+        {
+            PROFILING_SCOPE("UM-Building");
+            uniform_grid = mpi::UniformGridRow(vertices, faces, metadata.min_coords, metadata.max_coords);
+        }
+
+        {
+            PROFILING_SCOPE("Merge");
+            uniform_grid.merge_cells(vertices, faces);
+        }
+
+        {
+            PROFILING_SCOPE("Export");
+            qems::export_mesh("out/" + metadata.name, vertices, faces); 
+        }
+    }
+    PROFILING_PRINT();
 
     MPI_Finalize();
     return 0;

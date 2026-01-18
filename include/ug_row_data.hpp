@@ -23,6 +23,7 @@ class UniformGridRow {
     uint32_t num_split_ = 4;
     std::vector<Cell> cells_;
 public:
+    UniformGridRow() = default;
 
     UniformGridRow(const std::vector<float>& vertices, 
                    const std::vector<uint32_t>& faces,
@@ -102,41 +103,53 @@ public:
     {
         vertices.clear();
         faces.clear();
-    
-        std::unordered_map<uint32_t, uint32_t> original_to_new_map;
-        std::set<std::array<uint32_t, 3>> processed_faces;
-    
-        for (const auto& cell : cells_) {
+
+        std::unordered_map<uint32_t, uint32_t> mapping;
+
+        for (uint32_t c = 0; c < cells_.size(); ++c) {
+            const auto& cell = cells_[c];
+            if (cell.faces.empty()) 
+                continue;
+
             std::vector<uint32_t> local_to_merged(cell.vertices.size() / 3);
-    
+
             for (size_t i = 0; i < cell.indices_mapping.size(); ++i) {
                 uint32_t original_id = cell.indices_mapping[i];
-                
-                if (original_to_new_map.find(original_id) == original_to_new_map.end()) {
+
+                auto it = mapping.find(original_id);
+                if (it == mapping.end()) {
                     uint32_t new_idx = static_cast<uint32_t>(vertices.size() / 3);
-                    vertices.push_back(cell.vertices[i*3]);
-                    vertices.push_back(cell.vertices[i*3+1]);
-                    vertices.push_back(cell.vertices[i*3+2]);
-                    
-                    original_to_new_map[original_id] = new_idx;
+                    vertices.push_back(cell.vertices[i * 3]);
+                    vertices.push_back(cell.vertices[i * 3 + 1]);
+                    vertices.push_back(cell.vertices[i * 3 + 2]);
+
+                    mapping[original_id] = new_idx;
+                    local_to_merged[i] = new_idx;
+                } else {
+                    local_to_merged[i] = it->second;
                 }
-                local_to_merged[i] = original_to_new_map[original_id];
             }
-    
+
             for (size_t i = 0; i < cell.faces.size(); i += 3) {
-                std::array<uint32_t, 3> face_key = {
-                    cell.indices_mapping[cell.faces[i]],
-                    cell.indices_mapping[cell.faces[i+1]],
-                    cell.indices_mapping[cell.faces[i+2]]
-                };
-                
-                std::sort(face_key.begin(), face_key.end());
-    
-                if (processed_faces.insert(face_key).second) {
-                    faces.push_back(local_to_merged[cell.faces[i]]);
-                    faces.push_back(local_to_merged[cell.faces[i+1]]);
-                    faces.push_back(local_to_merged[cell.faces[i+2]]);
+                uint32_t idx0 = cell.faces[i];
+                uint32_t idx1 = cell.faces[i + 1];
+                uint32_t idx2 = cell.faces[i + 2];
+
+                Eigen::Vector3d p0(cell.vertices[idx0*3], cell.vertices[idx0*3+1], cell.vertices[idx0*3+2]);
+                Eigen::Vector3d p1(cell.vertices[idx1*3], cell.vertices[idx1*3+1], cell.vertices[idx1*3+2]);
+                Eigen::Vector3d p2(cell.vertices[idx2*3], cell.vertices[idx2*3+1], cell.vertices[idx2*3+2]);
+
+                uint32_t c0 = get_vertex_index(p0);
+                uint32_t c1 = get_vertex_index(p1);
+                uint32_t c2 = get_vertex_index(p2);
+
+                if (c0 < c || c1 < c || c2 < c) {
+                    continue; 
                 }
+
+                faces.push_back(local_to_merged[idx0]);
+                faces.push_back(local_to_merged[idx1]);
+                faces.push_back(local_to_merged[idx2]);
             }
         }
     }

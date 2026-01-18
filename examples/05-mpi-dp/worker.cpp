@@ -51,7 +51,6 @@ int main (int argc, char *argv[]) {
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
-    LOG_INFO("{} - {}", pid, num_procs);
 
     MPI_Finalize();
     return 0;
