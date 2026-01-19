@@ -32,12 +32,15 @@ int main(int argc, char **argv) {
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
+    mesh.request_face_normals();
+    mesh.request_vertex_normals();
  
     {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
             massert(OpenMesh::IO::read_mesh(mesh, FILENAME), "Error in mesh import");
+            mesh.update_normals();
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());

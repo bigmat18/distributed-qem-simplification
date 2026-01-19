@@ -204,12 +204,15 @@ int main(int argc, char* argv[]) {
             mesh.request_edge_status();
             mesh.request_face_status();
             mesh.request_halfedge_status();
+            mesh.request_vertex_normals();
+            mesh.request_face_normals();
 
             {
                 PROFILING_SCOPE("QEM-Sim-Rank-" + std::to_string(pid));
                 {
                     PROFILING_SCOPE("Mesh-Import");
                     qems::row_data_to_mesh(vertices, faces, mesh);
+                    mesh.update_normals();
                 }      
 
                 const uint32_t TARGET_FACES = static_cast<uint32_t>(mesh.n_faces() * 0.2f);

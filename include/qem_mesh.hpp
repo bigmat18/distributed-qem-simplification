@@ -19,6 +19,8 @@ struct QEMTraits : public OpenMesh::DefaultTraits {
         Eigen::Matrix4d Quadric; 
         std::uint32_t NodeIdx = 
             std::numeric_limits<uint32_t>::max();
+        std::uint32_t OriginalIdx = 
+            std::numeric_limits<uint32_t>::max();
     };
 
     EdgeTraits { 
@@ -54,5 +56,15 @@ void row_data_to_mesh(const std::vector<float>& vertices,
 void mesh_to_row_data(const QEMMesh& mesh,
                       std::vector<float> &vertices, 
                       std::vector<uint32_t> &faces);
+
+void row_data_to_mesh(const std::vector<float>& vertices, 
+                      const std::vector<uint32_t>& faces,
+                      const std::vector<uint32_t>& indices_mapping, // <--- NUOVO PARAMETRO
+                      QEMMesh& mesh);
+
+void mesh_to_row_data(QEMMesh& mesh, 
+                      std::vector<float>& vertices, 
+                      std::vector<uint32_t>& faces,
+                      std::vector<uint32_t>& indices_mapping);
 
 }  // namespace qems

@@ -1,3 +1,4 @@
+#include "logging.hpp"
 #include <cmath>
 #include <limits>
 #include <qem_simp.hpp>
@@ -11,74 +12,53 @@ void simplification(QEMMesh &mesh, uint32_t target, uint32_t num_faces, QEMPrior
         auto eh = pq.top();
         pq.pop();
 
-        if (mesh.status(eh).deleted())
+        if (mesh.status(eh).deleted() || mesh.is_boundary(eh))
             continue;
 
         auto heh = mesh.halfedge_handle(eh, 0);
-
         if (!mesh.is_collapse_ok(heh))
             continue;
 
         auto vh0 = mesh.from_vertex_handle(heh);
         auto vh1 = mesh.to_vertex_handle(heh);
 
-        if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted()) 
+        if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted() || 
+            mesh.is_boundary(vh0) || mesh.is_boundary(vh1))
             continue;
 
         Eigen::Vector4d newVertex = mesh.data(eh).NewVertex;
         OpenMesh::Vec3f coords(newVertex.x(), newVertex.y(), newVertex.z());
+        if (detail::check_normal_flipping(mesh, vh0, vh1, coords))
+            continue;
 
-        mesh.set_point(vh1, coords);
         mesh.data(vh1).Quadric = mesh.data(vh1).Quadric + mesh.data(vh0).Quadric;
+        mesh.set_point(vh1, coords);
         mesh.collapse(heh);
 
         std::vector<QEMMesh::VertexHandle> vertices;
         std::vector<QEMMesh::EdgeHandle> edges;
 
-        for (auto fh : mesh.vf_range(vh1)) {
-            if (mesh.status(fh).deleted()) continue;
+        for (auto adj_eh : mesh.ve_range(vh1)) {
+            if (mesh.status(adj_eh).deleted())
+                continue;
 
-            for (auto vh : mesh.fv_range(fh)) {
-                if (mesh.status(vh).deleted() || !mesh.data(vh).Collasable) 
-                    continue;
-
-                vertices.push_back(vh);
-            }    
-
-            for (auto eh : mesh.fe_range(fh)) {
-                auto he0 = mesh.halfedge_handle(eh, 0);
-                auto v0 = mesh.from_vertex_handle(he0);
-                auto v1 = mesh.to_vertex_handle(he0);
-
-                if (mesh.status(eh).deleted() || 
-                    !mesh.data(v0).Collasable || 
-                    !mesh.data(v1).Collasable) 
-                    continue;
-
-                edges.push_back(eh);
-            }
-        } 
-
-        for (size_t i = 0; i < vertices.size(); ++i) {
-            auto vh = vertices[i];
-            mesh.data(vh).Quadric = compute_vertex_quadratic(mesh, vh);
-        }
-
-        for (size_t i = 0; i < edges.size(); ++i) {
-            auto eh = edges[i];
-            auto he0 = mesh.halfedge_handle(eh, 0);
+            auto he0 = mesh.halfedge_handle(adj_eh, 0);
             auto v0 = mesh.from_vertex_handle(he0);
             auto v1 = mesh.to_vertex_handle(he0);
 
-            if (mesh.status(v0).deleted() || mesh.status(v1).deleted()) 
+            if (mesh.status(v0).deleted() || mesh.status(v1).deleted())
+                continue;
+
+            if (!mesh.data(v0).Collasable || !mesh.data(v1).Collasable)
                 continue;
 
             Eigen::Matrix4d Q = mesh.data(v0).Quadric + mesh.data(v1).Quadric;
-            Eigen::Vector4d newV = compute_new_best_vertex(mesh, eh, Q);
+            Eigen::Vector4d newV = compute_new_best_vertex(mesh, adj_eh, Q);
 
-            mesh.data(eh).Error = newV.transpose() * Q * newV;
-            mesh.data(eh).NewVertex = newV;
-            pq.push(eh);
+            mesh.data(adj_eh).Error = newV.transpose() * Q * newV;
+            mesh.data(adj_eh).NewVertex = newV;
+
+            pq.push(adj_eh);
         }
         deleted_faces += 2 - mesh.is_boundary(eh);
     }

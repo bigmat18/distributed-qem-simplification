@@ -41,17 +41,19 @@ int main(int argc, char **argv) {
     qems::Octree octree;
 
     mesh.request_vertex_status();
-    mesh.request_vertex_colors();
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
- 
+    mesh.request_vertex_normals();
+    mesh.request_face_normals();
+
     {
         PROFILING_SCOPE("QEM-Simplification");
         {
             PROFILING_SCOPE("Import-Mesh");
             qems::import_mesh(FILENAME, metadata, vertices, faces);
             qems::row_data_to_mesh(vertices, faces, mesh);
+            mesh.update_normals();
         }
 
         LOG_INFO("{} successfully imported", FILENAME.c_str());

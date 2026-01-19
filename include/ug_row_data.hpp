@@ -1,5 +1,6 @@
 #pragma once
 
+#include "debug.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -22,6 +23,7 @@ class UniformGridRow {
 
     uint32_t num_split_ = 4;
     std::vector<Cell> cells_;
+    uint32_t total_collasable_faces_ = 0;
 public:
     UniformGridRow() = default;
 
@@ -50,9 +52,14 @@ public:
             uint32_t c1 = get_vertex_index(p1);
             uint32_t c2 = get_vertex_index(p2);
 
-            uint32_t involved_cells[3] = {c0, c1, c2};
+            std::array<uint32_t, 3> involved_cells = {c0, c1, c2};
             std::sort(std::begin(involved_cells), std::end(involved_cells));
             auto last = std::unique(std::begin(involved_cells), std::end(involved_cells));
+            std::size_t unique_count = std::distance(involved_cells.begin(), last);
+
+            if (unique_count == 1) {
+                ++total_collasable_faces_;
+            }
 
             for (auto it = std::begin(involved_cells); it != last; ++it) {
                 uint32_t cell_idx = *it;
@@ -105,7 +112,6 @@ public:
         faces.clear();
 
         std::unordered_map<uint32_t, uint32_t> mapping;
-
         for (uint32_t c = 0; c < cells_.size(); ++c) {
             const auto& cell = cells_[c];
             if (cell.faces.empty()) 
@@ -154,17 +160,21 @@ public:
         }
     }
 
-private:
-
-    inline uint32_t get_vertex_index(const Eigen::Vector3d vertex) {
+    inline uint32_t get_vertex_index(const Eigen::Vector3d& vertex) { // Passa per const reference per efficienza
         Eigen::Vector3d block_size = (max_coords_ - min_coords_) / num_split_;
-        uint32_t x = std::min(static_cast<uint32_t>(std::floor(vertex.x() / block_size.x())), num_split_ - 1);
-        uint32_t y = std::min(static_cast<uint32_t>(std::floor(vertex.y() / block_size.y())), num_split_ - 1);
-        uint32_t z = std::min(static_cast<uint32_t>(std::floor(vertex.z() / block_size.z())), num_split_ - 1);
+        
+        Eigen::Vector3d local_pos = vertex - min_coords_; 
+    
+        uint32_t x = std::min(static_cast<uint32_t>(std::floor(local_pos.x() / block_size.x())), num_split_ - 1);
+        uint32_t y = std::min(static_cast<uint32_t>(std::floor(local_pos.y() / block_size.y())), num_split_ - 1);
+        uint32_t z = std::min(static_cast<uint32_t>(std::floor(local_pos.z() / block_size.z())), num_split_ - 1);
+        
         uint32_t index = x + (y * num_split_) + (z * num_split_ * num_split_);
-
+    
         return index;
     }
+
+    inline uint32_t total_collasable_faces() const { return total_collasable_faces_; }
 };
 
 }
