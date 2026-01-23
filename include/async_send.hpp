@@ -8,6 +8,7 @@
 #include <utils.hpp>
 #include <mpi.h>
 
+#include "logging.hpp"
 #include "message_layout.hpp"
 #include "packed_message.hpp"
 
@@ -23,14 +24,17 @@ class AsyncSend {
     bool waited = false;
 
     uint32_t num_data_buffers_;
-    uint32_t num_swap_buffers_ = 2;
+    uint32_t num_swap_buffers_;
     uint32_t active_buffer_idx_ = 0;
 public:
     AsyncSend(MessageLayout layout, uint32_t num_buffers = 2) {
+        num_swap_buffers_ = num_buffers;
         num_data_buffers_ = static_cast<uint32_t>(layout.size());
         messages_.insert(messages_.end(), num_buffers, {layout});
-        requests_ = std::vector<MPI_Request>(num_swap_buffers_ * num_data_buffers_, 
-                                             MPI_REQUEST_NULL);
+        requests_ = std::vector<MPI_Request>(
+            num_swap_buffers_ * num_data_buffers_, 
+            MPI_REQUEST_NULL
+        );
     }
 
     ~AsyncSend() { 
@@ -62,8 +66,6 @@ public:
             }, buffer);
             buffer_counter++;
         }
-
-        active_buffer_idx_ = (active_buffer_idx_ + 1) % num_swap_buffers_;
         waited = false;
     }
 
@@ -75,12 +77,28 @@ public:
         return messages_[active_buffer_idx_]; 
     }
 
-    inline void wait() {
-        if (!requests_.empty()) {
-            const uint32_t index = active_buffer_idx_ * num_data_buffers_; 
-            MPI_Waitall(num_data_buffers_, &requests_[index], MPI_STATUS_IGNORE);
-            waited = true;
+    inline void wait(int pid = 0) {
+        if (requests_.empty()) 
+            return;
+
+        int flag = 0;
+        uint32_t search_idx = active_buffer_idx_;
+
+        while (true) {
+            search_idx = (search_idx + 1) % num_swap_buffers_;
+
+            uint32_t index = search_idx * num_data_buffers_;
+            MPI_Testall(num_data_buffers_, 
+                        &requests_[index], 
+                        &flag, 
+                        MPI_STATUSES_IGNORE);
+
+            if (flag) {
+                active_buffer_idx_ = search_idx;
+                break;
+            }
         }
+        waited = true;
     }
 };
 

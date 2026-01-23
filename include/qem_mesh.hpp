@@ -59,7 +59,7 @@ void mesh_to_row_data(const QEMMesh& mesh,
 
 void row_data_to_mesh(const std::vector<float>& vertices, 
                       const std::vector<uint32_t>& faces,
-                      const std::vector<uint32_t>& indices_mapping, // <--- NUOVO PARAMETRO
+                      const std::vector<uint32_t>& indices_mapping,
                       QEMMesh& mesh);
 
 void mesh_to_row_data(QEMMesh& mesh, 

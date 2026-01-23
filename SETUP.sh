@@ -2,7 +2,7 @@
 
 set -e
 
-FLAGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+FLAGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 "
 BUILD_TYPES=("Debug" "Release" "RelWithDebInfo")
 ROOT_DIR="build"
 
@@ -25,7 +25,7 @@ setup() {
 
     echo "==> Configuring $CMAKE_TYPE in $DIR"
     mkdir -p "$DIR"
-    cmake -B "$DIR" -DCMAKE_BUILD_TYPE="$CMAKE_TYPE" . ${FLAGS}
+    cmake -B "$DIR" -DCMAKE_BUILD_TYPE="${CMAKE_TYPE}" . ${FLAGS}
 
     cd "$ROOT_DIR"
     ln -sf "$CMAKE_TYPE/compile_commands.json" compile_commands.json

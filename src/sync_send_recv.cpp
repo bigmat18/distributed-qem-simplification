@@ -1,3 +1,4 @@
+#include "massert.hpp"
 #include <sync_send_recv.hpp>
 
 namespace mpi {
@@ -39,10 +40,12 @@ int sync_recv(PackedMessage& message, int source) {
 
             if (!is_static) {
                 MPI_Probe(source, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-                if (status.MPI_TAG == CSTM_TAG_END || status.MPI_TAG != key) {
+                if (status.MPI_TAG == CSTM_TAG_END) {
                     end = true;
                     return;
                 }
+
+                massert(status.MPI_TAG == key, "Error in key");
 
                 if (source == MPI_ANY_SOURCE)
                     source = status.MPI_SOURCE;
