@@ -77,7 +77,7 @@ public:
         return messages_[active_buffer_idx_]; 
     }
 
-    inline void wait(int pid = 0) {
+    inline void wait() {
         if (requests_.empty()) 
             return;
 

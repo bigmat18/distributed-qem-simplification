@@ -11,9 +11,6 @@ set(INCLUDE_DIR     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(SRC_DIR         ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(EXAMPLES_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/examples)
 
-set(CPPUTILS_ENABLE_LOGGING OFF CACHE BOOL "" FORCE)
-set(CPPUTILS_ENABLE_ASSERT  OFF CACHE BOOL "" FORCE)
-set(CPPUTILS_ENABLE_DEBUG   OFF CACHE BOOL "" FORCE)
 
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
@@ -32,25 +29,7 @@ add_subdirectory(${EXTERNAL_DIR}/eigen)
 add_subdirectory(${EXTERNAL_DIR}/OpenMesh)
 add_subdirectory(${EXTERNAL_DIR}/cxxopts)
 
-if(MY_ENABLE_LOGGING)
-    target_compile_definitions(cpp-utils-lib INTERFACE 
-        $<$<NOT:$<CONFIG:Release>>:ENABLE_LOGGING>
-    )
-endif()
-
-if(MY_ENABLE_ASSERT)
-    target_compile_definitions(cpp-utils-lib INTERFACE 
-        $<$<NOT:$<CONFIG:Release>>:ENABLE_ASSERT>
-    )
-endif()
-
-if(MY_ENABLE_DEBUG)
-    target_compile_definitions(cpp-utils-lib INTERFACE 
-        $<$<NOT:$<CONFIG:Release>>:ENABLE_DEBUG>
-    )
-endif()
-
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -Ofast -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -g")
 set(TARGET_LIB_NAME qems)
 file(GLOB_RECURSE CPP_FILES ${SRC_DIR}/*.cpp)
 add_library(${TARGET_LIB_NAME} ${CPP_FILES})

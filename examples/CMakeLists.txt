@@ -5,11 +5,11 @@ set(EXAMPLES_MP
     01-sequential
     02-omp-uniform
     03-omp-octree
-    04-mpi-base
 )
 
 set(EXAMPLES_MPI
-    05-mpi-dp
+    04-mpi-omp
+    05-full-mpi
 )
 
 foreach (subdir ${EXAMPLES_MP})
@@ -35,12 +35,15 @@ foreach (subdir ${EXAMPLES_MPI})
         file(GLOB CPP_FILES "${SUBDIR_PATH}/*.cpp")
 
         foreach (src ${CPP_FILES})
-            get_filename_component(exec_name ${src} NAME_WE)
-            add_executable(${exec_name} ${src})
-            target_link_libraries(${exec_name} PUBLIC qems cxxopts)
-            set_target_properties(${exec_name} PROPERTIES
-                RUNTIME_OUTPUT_DIRECTORY
-                    ${CMAKE_BINARY_DIR}/examples/${subdir}
+            get_filename_component(filename ${src} NAME_WE)
+            set(TARGET_NAME "${subdir}_${filename}")
+
+            add_executable(${TARGET_NAME} ${src})
+            target_link_libraries(${TARGET_NAME} PUBLIC qems cxxopts)
+
+            set_target_properties(${TARGET_NAME} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/examples/${subdir}"
+                OUTPUT_NAME "${filename}"
             )
         endforeach()
 
