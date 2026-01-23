@@ -1,15 +1,19 @@
 #include <cstdint>
+#include <string>
 #include <sys/time.h>
 #include <unistd.h>
 #include <cxxopts.hpp>
 
 #include <mpi.h>
 #include <utils.hpp>
-#include <mpmc_queue.hpp>
 
+#include "logging.hpp"
+#include "mesh_import.hpp"
+#include "mpmc_queue.hpp"
+#include "packed_message.hpp"
 #include "utils.hpp"
 
-int main(int argc, char **argv) {
+int main (int argc, char *argv[]) {
     omlog().disable();
     omout().disable();
     omerr().disable();
@@ -113,19 +117,33 @@ int main(int argc, char **argv) {
                                 const auto& max = metadata.max_coords;
 
                                 qems::import_mesh(file, metadata, vertices, faces);
+                                auto uniform_grid = mpi::UniformGridRow(
+                                    vertices, faces, metadata.min_coords, 
+                                    metadata.max_coords, START_PARTITIONS 
+                                );
 
                                 uint32_t cell_id = 0;
-                                mpi::PackedMessage msg(layout);
+                                for (auto &cell : uniform_grid) {
+                                    mpi::PackedMessage msg(layout);
+                                    float total_faces = static_cast<float>(faces.size()/3);
+                                    uint32_t final_target = static_cast<uint32_t>(std::floor(total_faces * TARGET));
 
-                                auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
-                                bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
-                                bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
+                                    msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {START_PARTITIONS, START_PARTITIONS};
+                                    msg.get_buffer<uint32_t>(CSTM_TAG_FINAL_TARGET) = { final_target };
 
-                                msg.get_buffer<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
-                                msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(vertices);
-                                msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(faces);
+                                    auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
+                                    bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
+                                    bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
-                                cells_to_compute.push(std::move(msg));
+                                    msg.get_buffer<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
+                                    msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID) = {cell_id};
+                                    msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
+                                    msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
+                                    msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);
+
+                                    cells_to_compute.push(std::move(msg));
+                                    cell_id++;
+                                }
                             }
                         }
                     }

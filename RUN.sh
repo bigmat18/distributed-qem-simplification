@@ -11,9 +11,9 @@ TARGET_PERCENT="10"
 TYPE=""
 EXE=""
 
-NUM_WORKER="3"
+NUM_WORKER="4"
 NUM_WORKER_THREADS="1"
-NUM_MASTER_THREADS="1"
+NUM_MASTER_THREADS="4"
 
 PROFILE_MASTER=false
 PROFILE_WORKERS=false
@@ -141,7 +141,7 @@ else
 fi
 
 
-time -p mpirun --use-hwthread-cpus --bind-to none --report-bindings \
+time -p mpirun --use-hwthread-cpus --bynode --bind-to none --report-bindings \
   -np 1 \
     -x OMP_NUM_THREADS="${NUM_MASTER_THREADS}" \
     "${MASTER_CMD[@]}" \

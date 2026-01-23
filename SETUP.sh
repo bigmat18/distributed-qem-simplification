@@ -29,6 +29,7 @@ setup() {
 
     cd "$ROOT_DIR"
     ln -sf "$CMAKE_TYPE/compile_commands.json" compile_commands.json
+    cd ..
 }
 
 

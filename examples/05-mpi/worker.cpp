@@ -39,7 +39,7 @@ int main (int argc, char *argv[]) {
     {
         mpi::MessageLayout layout = get_layout();
 
-        mpi::AsyncSend async_sender(layout, 100);
+        mpi::AsyncSend async_sender(layout, 200);
         mpi::PackedMessage msg(layout);
         auto& id = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID);
         auto& part_lvl = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL);
