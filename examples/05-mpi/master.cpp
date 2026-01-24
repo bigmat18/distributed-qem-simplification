@@ -69,7 +69,7 @@ int main (int argc, char *argv[]) {
                 mpi::PackedMessage recv_msg(layout);
                 while (num_files_saved < NUM_MESHES) {
                     const int dest = mpi::sync_recv(recv_msg);
-                    const auto& recv_name = recv_msg.get_buffer<char>(CSTM_TAG_NAME);
+                    const auto& recv_name = recv_msg.get_element<char>(CSTM_TAG_NAME);
                     const auto& recv_vertices = recv_msg.get_buffer<float>(CSTM_TAG_VERT);
                     const auto& recv_faces = recv_msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
 
@@ -93,8 +93,9 @@ int main (int argc, char *argv[]) {
                     }
                 }
 
+                mpi::PackedMessage final_msg;
                 for (int w = 1; w < num_procs; ++w)
-                    mpi::sync_send(w, {});
+                    mpi::sync_send(w, final_msg);
             }
 
             #pragma omp single nowait 
@@ -123,20 +124,22 @@ int main (int argc, char *argv[]) {
                                 );
 
                                 uint32_t cell_id = 0;
+                                float total_faces = static_cast<float>(faces.size()/3);
+                                uint32_t final_target = static_cast<uint32_t>(std::floor(total_faces * TARGET));
+
                                 for (auto &cell : uniform_grid) {
                                     mpi::PackedMessage msg(layout);
-                                    float total_faces = static_cast<float>(faces.size()/3);
-                                    uint32_t final_target = static_cast<uint32_t>(std::floor(total_faces * TARGET));
 
-                                    msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {START_PARTITIONS, START_PARTITIONS};
-                                    msg.get_buffer<uint32_t>(CSTM_TAG_FINAL_TARGET) = { final_target };
+                                    msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {START_PARTITIONS, START_PARTITIONS};
+                                    msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET) = { final_target };
 
-                                    auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
+                                    auto& bb = msg.get_element<double>(CSTM_TAG_BB);
                                     bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
                                     bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
-                                    msg.get_buffer<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
-                                    msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID) = {cell_id};
+                                    msg.get_element<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
+                                    msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {cell_id};
+
                                     msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
                                     msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
                                     msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);

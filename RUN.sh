@@ -116,12 +116,6 @@ BASE_PATH="build/${TYPE_NAME}/examples/${EXE}"
 MASTER_BIN="${BASE_PATH}/master"
 WORKER_BIN="${BASE_PATH}/worker"
 
-if [ ! -f "$MASTER_BIN" ] || [ ! -f "$WORKER_BIN" ]; then
-    echo "Error: Executables not found." >&2
-    echo "  Expected Master: $MASTER_BIN" >&2
-    echo "  Expected Worker: $WORKER_BIN" >&2
-    exit 1
-fi
 
 mkdir -p perf
 
@@ -129,19 +123,22 @@ MASTER_ARGS=("${INPUT_FOLDER}" -t "${TARGET_PERCENT}" -n "${NUM_MESHES}" -p "${P
 WORKER_ARGS=(-p "${PARTITIONS}")
 
 if $PROFILE_MASTER; then
-  MASTER_CMD=("perf" "record" "-g" "-o" "perf/${EXE}-master.perf.data" "${MASTER_BIN}" "${MASTER_ARGS[@]}")
+    MASTER_CMD=("perf" "record" "-g" "-o" "perf/${EXE}-master.perf.data" "${MASTER_BIN}" "${MASTER_ARGS[@]}")
 else
-  MASTER_CMD=("${MASTER_BIN}" "${MASTER_ARGS[@]}")
+    MASTER_CMD=("${MASTER_BIN}" "${MASTER_ARGS[@]}")
 fi
 
 if $PROFILE_WORKERS; then
-  WORKER_CMD=("perf" "record" "-g" "-o" "perf/${EXE}-worker.perf.data" "${WORKER_BIN}" "${WORKER_ARGS[@]}")
+    WORKER_CMD=(
+        "sh" "-c"
+        "perf record -m 4 -g -o perf/${EXE}-worker-rank-\${OMPI_COMM_WORLD_RANK}.perf.data ${WORKER_BIN} ${WORKER_ARGS[*]}"
+    )
 else
-  WORKER_CMD=("${WORKER_BIN}" "${WORKER_ARGS[@]}")
+    WORKER_CMD=("${WORKER_BIN}" "${WORKER_ARGS[@]}")
 fi
 
 
-time -p mpirun --use-hwthread-cpus --bynode --bind-to none --report-bindings \
+time -p mpirun --use-hwthread-cpus --bynode --bind-to none --report-bindings --allow-run-as-root\
   -np 1 \
     -x OMP_NUM_THREADS="${NUM_MASTER_THREADS}" \
     "${MASTER_CMD[@]}" \

@@ -8,6 +8,8 @@
 #include <utils.hpp>
 #include <mpi.h>
 
+#include "logging.hpp"
+#include "massert.hpp"
 #include "message_layout.hpp"
 
 namespace mpi {
@@ -23,7 +25,8 @@ class PackedMessage {
         >, bool> // bool is for static/dynamic array
     >;
 
-    DataBlock data_;
+    DataBlock buffer_data_;
+    DataBlock element_data_;
     MPI_CUSTOM_TAG tag_ = CSTM_TAG_END;
 
 public:
@@ -32,13 +35,23 @@ public:
     PackedMessage(const MessageLayout layout) : 
         tag_(layout.tag()) 
     {
-        for (const auto [key, value] : layout) {
+        for (const auto [key, value] : layout.buffer_layout_) {
             auto& [buffer, size] = value;
             std::visit([&](auto& buffer) {
                 using Holder = std::decay_t<decltype(buffer)>;
                 using T      = typename Holder::type;
                 bool is_static = size != 0;
-                data_.try_emplace(key, std::make_pair(std::vector<T>(size), is_static));
+                buffer_data_.try_emplace(key, std::make_pair(std::vector<T>(size), is_static));
+            }, buffer);
+        }
+
+        for (const auto [key, value] : layout.element_layout_) {
+            auto& [buffer, size] = value;
+            std::visit([&](auto& buffer) {
+                using Holder = std::decay_t<decltype(buffer)>;
+                using T      = typename Holder::type;
+                bool is_static = size != 0;
+                element_data_.try_emplace(key, std::make_pair(std::vector<T>(size), is_static));
             }, buffer);
         }
     }
@@ -47,8 +60,20 @@ public:
     std::vector<T>& get_buffer(const MPI_CUSTOM_TAG tag) {
         using VecT = std::vector<T>;
         
-        auto it = data_.find(tag);
-        massert(it != data_.end(), "Tag " + std::to_string(tag) + " not found");
+        auto it = buffer_data_.find(tag);
+        massert(it != buffer_data_.end(), "Tag " + std::to_string(tag) + " not found");
+
+        auto *vec = std::get_if<VecT>(&(it->second.first));
+        massert(vec != nullptr, "Type mismatch for tag " + std::to_string(tag));
+        return *vec;
+    }
+
+    template<typename T> requires MessageSupportedTypes<T>
+    std::vector<T>& get_element(const MPI_CUSTOM_TAG tag) {
+        using VecT = std::vector<T>;
+        
+        auto it = element_data_.find(tag);
+        massert(it != element_data_.end(), "Tag " + std::to_string(tag) + " not found");
 
         auto *vec = std::get_if<VecT>(&(it->second.first));
         massert(vec != nullptr, "Type mismatch for tag " + std::to_string(tag));
@@ -59,39 +84,34 @@ public:
     const std::vector<T>& get_buffer(const MPI_CUSTOM_TAG tag) const {
         using VecT = std::vector<T>;
         
-        auto it = data_.find(tag);
-        massert(it != data_.end(), "Tag " + std::to_string(tag) + " not found");
+        auto it = buffer_data_.find(tag);
+        massert(it != buffer_data_.end(), "Tag " + std::to_string(tag) + " not found");
 
         auto *vec = std::get_if<VecT>(&(it->second.first));
         massert(vec != nullptr, "Type mismatch for tag " + std::to_string(tag));
         return *vec;
     }
 
-    bool is_static(const MPI_CUSTOM_TAG tag) {
-        auto it = data_.find(tag);
-        massert(it != data_.end(), "Tag " + std::to_string(tag) + " not found");
-        return it->second.second;
+    template<typename T> requires MessageSupportedTypes<T>
+    const std::vector<T>& get_element(const MPI_CUSTOM_TAG tag) const {
+        using VecT = std::vector<T>;
+        
+        auto it = element_data_.find(tag);
+        massert(it != element_data_.end(), "Tag " + std::to_string(tag) + " not found");
+
+        auto *vec = std::get_if<VecT>(&(it->second.first));
+        massert(vec != nullptr, "Type mismatch for tag " + std::to_string(tag));
+        return *vec;
     }
 
     inline MPI_CUSTOM_TAG tag() const { return tag_; }
 
-    auto begin() noexcept { return data_.begin(); }
-    auto end()   noexcept { return data_.end(); }
-
-    auto begin()  const noexcept { return data_.begin(); }
-    auto end()    const noexcept { return data_.end(); }
-    auto cbegin() const noexcept { return data_.cbegin(); }
-    auto cend()   const noexcept { return data_.cend();}
-
-    std::size_t size() const noexcept { return data_.size(); }
-
 private:
 
-    void pack_data(std::vector<char>& packed_data) {
+    void pack_data(std::vector<char>& packed_data) const {
         std::size_t total_size = 0;
-        int pack_overhead = 0;
 
-        for (const auto& [key, value] : data_) {
+        for (const auto& [key, value] : element_data_) {
             auto& [buffer, is_static] = value;
 
             std::visit([&](auto& buf) {
@@ -99,23 +119,19 @@ private:
                 using T    = typename VecT::value_type;
                 MPI_Datatype mpi_type = get_mpi_type<T>();
 
-                if (!is_static && !buf.empty()) {
-                    MPI_Pack_size(1, MPI_UINT32_T, MPI_COMM_WORLD, &pack_overhead);
-                    total_size += pack_overhead;
-                }
+                int size = 0;
+                MPI_Pack_size(1, MPI_UINT32_T, MPI_COMM_WORLD, &size);
+                total_size += size;
 
-                if (!buf.empty()) {
-                    MPI_Pack_size(static_cast<int>(buf.size()), get_mpi_type<T>(), 
-                                  MPI_COMM_WORLD, &pack_overhead);
-                    total_size += pack_overhead;
-                }
-
+                MPI_Pack_size(static_cast<int>(buf.size()), mpi_type, 
+                              MPI_COMM_WORLD, &size);
+                total_size += size;
             }, buffer);
         }
         packed_data.resize(total_size);
 
         int position = 0;
-        for (auto& [key, value] : data_) {
+        for (auto& [key, value] : element_data_) {
             auto& [buffer, is_static] = value;
 
             std::visit([&](auto& buf) {
@@ -123,16 +139,14 @@ private:
                 using T    = typename VecT::value_type;
                 MPI_Datatype mpi_type = get_mpi_type<T>();
 
-                if (!is_static && !buf.empty()) {
-                    uint32_t s = static_cast<uint32_t>(buf.size());
-                    MPI_Pack(&s, 1, MPI_UINT32_T, packed_data.data(), 
-                             total_size, &position, MPI_COMM_WORLD);
-                }
+                uint32_t size = static_cast<uint32_t>(buf.size());
+                MPI_Pack(&size, 1, MPI_UINT32_T, packed_data.data(), 
+                         total_size, &position, MPI_COMM_WORLD);
     
-                if (!buf.empty()) {
+                if (size > 0) {
                     MPI_Pack(buf.data(), buf.size(), mpi_type, 
-                             packed_data.data(), total_size, 
-                             &position, MPI_COMM_WORLD);
+                         packed_data.data(), total_size, 
+                         &position, MPI_COMM_WORLD);
                 }
             }, buffer);
         }
@@ -142,35 +156,21 @@ private:
         int position = 0;
         uint32_t total_size = static_cast<uint32_t>(packed_data.size());
 
-        for (auto& [key, value] : data_) {
+        for (auto& [key, value] : element_data_) {
             auto& [buffer, is_static] = value;
 
-            uint32_t size = 0;
+            uint32_t count = 0;
             MPI_Unpack(packed_data.data(), total_size, &position, 
-                       &size, 1, MPI_UINT32_T, MPI_COMM_WORLD); 
+                       &count, 1, MPI_UINT32_T, MPI_COMM_WORLD);
 
             std::visit([&](auto& buf) {
                 using VecT = std::decay_t<decltype(buf)>;
                 using T    = typename VecT::value_type;
                 MPI_Datatype mpi_type = get_mpi_type<T>();
 
-                uint32_t count = 0;
-
-                if (is_static) {
-                    count = static_cast<uint32_t>(buf.size()); 
-                } else {
-                    MPI_Unpack(packed_data.data(), total_size, &position, 
-                               &count, 1, MPI_UINT32_T, MPI_COMM_WORLD);
-
-                    if (buf.size() != count)
-                        buf.resize(count);
-                }
-
-                if (count > 0) {
-                     MPI_Unpack(packed_data.data(), total_size, &position, 
-                                buf.data(), count, mpi_type, MPI_COMM_WORLD);
-                }
-
+                buf.resize(count);
+                MPI_Unpack(packed_data.data(), static_cast<int>(total_size), &position, 
+                           buf.data(), static_cast<int>(count), mpi_type, MPI_COMM_WORLD);
             }, buffer);
         }
     }

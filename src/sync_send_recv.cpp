@@ -1,4 +1,5 @@
 #include "massert.hpp"
+#include <mpi.h>
 #include <sync_send_recv.hpp>
 
 namespace mpi {
@@ -10,7 +11,13 @@ void sync_send(const int dest, const PackedMessage& message) {
         return;
     }
 
-    for (const auto& [key, value] : message) {
+
+    std::vector<char> packed_message;
+    message.pack_data(packed_message);
+    MPI_Send(packed_message.data(), packed_message.size(), MPI_PACKED, 
+             dest, message.tag(), MPI_COMM_WORLD);
+
+    for (const auto& [key, value] : message.buffer_data_) {
         const auto& [buffer, is_static] = value;
 
         std::visit([&](auto &buf) {
@@ -27,9 +34,26 @@ void sync_send(const int dest, const PackedMessage& message) {
 int sync_recv(PackedMessage& message, int source) {
     MPI_Status status;
     int count;
-    bool end = false;
 
-    for (auto& [key, value] : message) {
+    MPI_Probe(source, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    if (status.MPI_TAG == CSTM_TAG_END)
+        return -1;
+
+    massert(status.MPI_TAG == message.tag(), "Error in key");
+
+    if (source == MPI_ANY_SOURCE)
+        source = status.MPI_SOURCE;
+
+    MPI_Get_count(&status, MPI_PACKED, &count);
+    std::vector<char> packed_message;
+    packed_message.resize(count); 
+
+    MPI_Recv(packed_message.data(), count, MPI_PACKED, 
+             source, message.tag(), MPI_COMM_WORLD, &status);
+    message.unpack_data(packed_message);
+
+    bool end = false;
+    for (auto& [key, value] : message.buffer_data_) {
         auto& [buffer, is_static] = value;
 
         std::visit([&](auto& buf) {
@@ -39,17 +63,7 @@ int sync_recv(PackedMessage& message, int source) {
             MPI_Datatype type = PackedMessage::get_mpi_type<T>(); 
 
             if (!is_static) {
-                MPI_Probe(source, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-                if (status.MPI_TAG == CSTM_TAG_END) {
-                    end = true;
-                    return;
-                }
-
-                massert(status.MPI_TAG == key, "Error in key");
-
-                if (source == MPI_ANY_SOURCE)
-                    source = status.MPI_SOURCE;
-
+                MPI_Probe(source, key, MPI_COMM_WORLD, &status);
                 MPI_Get_count(&status, type, &count);
 
                 if (buf.size() != count)
@@ -59,22 +73,12 @@ int sync_recv(PackedMessage& message, int source) {
                          source, key, MPI_COMM_WORLD, &status);
             } else {
                 MPI_Recv(buf.data(), buf.size(), type, 
-                         source, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-                if (status.MPI_TAG == CSTM_TAG_END || status.MPI_TAG != key) {
-                    end = true;
-                    return;
-                }
-
-                if (source == MPI_ANY_SOURCE)
-                    source = status.MPI_SOURCE;
+                         source, key, MPI_COMM_WORLD, &status);
             }
 
         }, buffer);
-
-        if (end) 
-            return -1;
     }
+
     return source;
 }
 

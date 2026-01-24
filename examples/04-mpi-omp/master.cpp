@@ -7,6 +7,7 @@
 #include <utils.hpp>
 #include <mpmc_queue.hpp>
 
+#include "packed_message.hpp"
 #include "utils.hpp"
 
 int main(int argc, char **argv) {
@@ -89,8 +90,9 @@ int main(int argc, char **argv) {
                     }
                 }
 
+                mpi::PackedMessage final_msg;
                 for (int w = 1; w < num_procs; ++w)
-                    mpi::sync_send(w, {});
+                    mpi::sync_send(w, final_msg);
             }
 
             #pragma omp single nowait 

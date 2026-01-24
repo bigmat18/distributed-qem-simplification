@@ -24,11 +24,11 @@
 inline auto get_layout() {
     mpi::MessageLayout layout(CSTM_MESH);
     layout
-     .add_buffer<uint32_t, 2>(CSTM_TAG_CELL_ID)
-     .add_buffer<uint32_t, 2>(CSTM_TAG_CELL_PART_LVL)
-     .add_buffer<uint32_t, 1>(CSTM_TAG_FINAL_TARGET)
-     .add_buffer<double, 6>(CSTM_TAG_BB)
-     .add_buffer<char>(CSTM_TAG_NAME)
+     .add_element<uint32_t, 2>(CSTM_TAG_CELL_ID)
+     .add_element<uint32_t, 2>(CSTM_TAG_CELL_PART_LVL)
+     .add_element<uint32_t, 1>(CSTM_TAG_FINAL_TARGET)
+     .add_element<double, 6>(CSTM_TAG_BB)
+     .add_element<char>(CSTM_TAG_NAME)
      .add_buffer<float>(CSTM_TAG_VERT)
      .add_buffer<uint32_t>(CSTM_TAG_FACE)
      .add_buffer<uint32_t>(CSTM_TAG_IDX_MAP);

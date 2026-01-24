@@ -39,13 +39,14 @@ int main (int argc, char *argv[]) {
     {
         mpi::MessageLayout layout = get_layout();
 
-        mpi::AsyncSend async_sender(layout, 200);
+        mpi::AsyncSend async_sender(layout, 500);
         mpi::PackedMessage msg(layout);
-        auto& id = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID);
-        auto& part_lvl = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL);
-        auto& final_target = msg.get_buffer<uint32_t>(CSTM_TAG_FINAL_TARGET);
-        auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
-        auto& name = msg.get_buffer<char>(CSTM_TAG_NAME);
+        auto& id = msg.get_element<uint32_t>(CSTM_TAG_CELL_ID);
+        auto& part_lvl = msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL);
+        auto& final_target = msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET);
+        auto& bb = msg.get_element<double>(CSTM_TAG_BB);
+        auto& name = msg.get_element<char>(CSTM_TAG_NAME);
+
         auto& vertices = msg.get_buffer<float>(CSTM_TAG_VERT);
         auto& faces = msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
         auto& idx_mapping = msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP);
@@ -74,8 +75,8 @@ int main (int argc, char *argv[]) {
 
         auto reduction_step = [&](uint32_t old_partitions, uint32_t new_partitions, std::string name) -> bool 
             {
-                const uint32_t old_cell_id = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID)[0];
-                const uint32_t new_cell_id = msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID)[1];
+                const uint32_t old_cell_id = msg.get_element<uint32_t>(CSTM_TAG_CELL_ID)[0];
+                const uint32_t new_cell_id = msg.get_element<uint32_t>(CSTM_TAG_CELL_ID)[1];
 
                 auto& partitions_map = reduction_mapping[name];
                 auto& cell_map = partitions_map[new_partitions]; 
@@ -111,8 +112,9 @@ int main (int argc, char *argv[]) {
                 if (vector.size() == expected) {
                     auto uniform_grid = mpi::UniformGridRow({}, {}, {}, min, max, old_partitions);
                     for (auto& el : vector) {
-                        uint32_t index = el.get_buffer<uint32_t>(CSTM_TAG_CELL_ID)[0];
+                        uint32_t index = el.get_element<uint32_t>(CSTM_TAG_CELL_ID)[0];
                         auto& cell = uniform_grid.cells()[index];
+
                         cell.vertices = std::move(el.get_buffer<float>(CSTM_TAG_VERT));
                         cell.faces = std::move(el.get_buffer<uint32_t>(CSTM_TAG_FACE));
                         cell.indices_mapping = std::move(el.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP));
@@ -153,8 +155,9 @@ int main (int argc, char *argv[]) {
                 vertices = std::move(task.get_buffer<float>(CSTM_TAG_VERT));
                 faces = std::move(task.get_buffer<uint32_t>(CSTM_TAG_FACE));
                 idx_mapping = std::move(task.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP));
-                part_lvl = std::move(task.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL));
-                id = std::move(task.get_buffer<uint32_t>(CSTM_TAG_CELL_ID));
+
+                part_lvl = std::move(task.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL));
+                id = std::move(task.get_element<uint32_t>(CSTM_TAG_CELL_ID));
 
                 str_name = std::string(name.data(), name.size());
                 old_partitions = part_lvl[0];
@@ -235,7 +238,7 @@ int main (int argc, char *argv[]) {
             if (new_partitions == 0) {
                 async_sender.wait();
                 auto& final_msg = async_sender.get_message();
-                final_msg.get_buffer<char>(CSTM_TAG_NAME) = name;
+                final_msg.get_element<char>(CSTM_TAG_NAME) = name;
                 std::swap(final_msg.get_buffer<float>(CSTM_TAG_VERT), vertices);
                 std::swap(final_msg.get_buffer<uint32_t>(CSTM_TAG_FACE), faces);
                 std::swap(final_msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP), idx_mapping);
@@ -278,11 +281,11 @@ int main (int argc, char *argv[]) {
                             async_sender.wait();
 
                             auto& send_msg = async_sender.get_message();
-                            send_msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
-                            send_msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
-                            send_msg.get_buffer<double>(CSTM_TAG_BB) = bb;
-                            send_msg.get_buffer<char>(CSTM_TAG_NAME) = name;
-                            send_msg.get_buffer<uint32_t>(CSTM_TAG_FINAL_TARGET) = final_target;
+                            send_msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
+                            send_msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
+                            send_msg.get_element<double>(CSTM_TAG_BB) = bb;
+                            send_msg.get_element<char>(CSTM_TAG_NAME) = name;
+                            send_msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET) = final_target;
 
                             std::swap(send_msg.get_buffer<float>(CSTM_TAG_VERT), cell.vertices);
                             std::swap(send_msg.get_buffer<uint32_t>(CSTM_TAG_FACE), cell.faces);
@@ -290,8 +293,8 @@ int main (int argc, char *argv[]) {
 
                             async_sender.isend(dest);
                         } else {
-                            msg.get_buffer<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
-                            msg.get_buffer<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
+                            msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
+                            msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
                             msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
                             msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
                             msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);
@@ -304,6 +307,7 @@ int main (int argc, char *argv[]) {
             }
 
             async_sender.wait();
+
             auto& request_msg = async_sender.get_message();
             request_msg.get_buffer<float>(CSTM_TAG_VERT).clear();
             request_msg.get_buffer<uint32_t>(CSTM_TAG_FACE).clear();

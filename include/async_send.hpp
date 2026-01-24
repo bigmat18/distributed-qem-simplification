@@ -19,6 +19,7 @@ class AsyncSend {
     // - [(key1, [type1]), (key2, [type2]) ...] buffer 1
     // - [(key1, [type1]), (key2, [type2]) ...] buffer 2
     // ...
+    std::vector<std::vector<char>> packed_messages_;
     std::vector<PackedMessage> messages_;
     std::vector<MPI_Request> requests_;
     bool waited = false;
@@ -29,8 +30,11 @@ class AsyncSend {
 public:
     AsyncSend(MessageLayout layout, uint32_t num_buffers = 2) {
         num_swap_buffers_ = num_buffers;
-        num_data_buffers_ = static_cast<uint32_t>(layout.size());
+        num_data_buffers_ = static_cast<uint32_t>(layout.buffer_layout_.size() + 1);
+
         messages_.insert(messages_.end(), num_buffers, {layout});
+        packed_messages_.insert(packed_messages_.end(), num_buffers, {});
+
         requests_ = std::vector<MPI_Request>(
             num_swap_buffers_ * num_data_buffers_, 
             MPI_REQUEST_NULL
@@ -48,10 +52,18 @@ public:
     void isend(const int dest) {
         massert(waited, "First call wait()");
         const uint32_t index = active_buffer_idx_ * num_data_buffers_; 
-        const auto& message = messages_[active_buffer_idx_];
+        auto& message = messages_[active_buffer_idx_];
 
-        uint32_t buffer_counter = 0;
-        for (const auto& [key, value] : message) {
+        MPI_Request& packed_request = requests_[index];
+        std::vector<char> &packed_message = packed_messages_[active_buffer_idx_];
+
+        message.pack_data(packed_message);
+
+        MPI_Isend(packed_message.data(), packed_message.size(), MPI_PACKED, 
+                  dest, message.tag(), MPI_COMM_WORLD, &packed_request);
+
+        uint32_t buffer_counter = 1;
+        for (const auto& [key, value] : message.buffer_data_) {
             const auto& [buffer, is_static] = value; 
 
             std::visit([&](auto &buf) {
