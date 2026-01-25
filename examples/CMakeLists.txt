@@ -9,7 +9,8 @@ set(EXAMPLES_MP
 
 set(EXAMPLES_MPI
     04-mpi-omp
-    05-mpi
+    05-mpi-omp
+    06-mpi
 )
 
 foreach (subdir ${EXAMPLES_MP})

@@ -7,10 +7,7 @@
 #include <mpi.h>
 #include <utils.hpp>
 
-#include "logging.hpp"
-#include "mesh_import.hpp"
 #include "mpmc_queue.hpp"
-#include "packed_message.hpp"
 #include "utils.hpp"
 
 int main (int argc, char *argv[]) {
