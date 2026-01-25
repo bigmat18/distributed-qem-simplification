@@ -144,7 +144,7 @@ int main (int argc, char *argv[]) {
                                         msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
                                         msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);
 
-                                        uint32_t dest = get_dest(cell_id, START_PARTITIONS, num_procs-1);
+                                        uint32_t dest = get_dest(cell_id, START_PARTITIONS, num_procs-1, counter_file);
                                         cells_per_worker[dest].push(std::move(msg));
                                         cell_id++;
                                     }
