@@ -48,19 +48,19 @@ int main (int argc, char *argv[]) {
 
     {
         mpi::MessageLayout layout = get_layout();
-        mpi::MPMCQueue<mpi::PackedMessage> cells_to_compute;
+        std::vector<mpi::MPMCQueue<mpi::PackedMessage>> cells_per_worker(num_procs-1);
 
         #pragma omp parallel
         {
             int tid = omp_get_thread_num();
 
             if (tid == 0) {
-                mpi::AsyncSend async_sender(layout, num_procs-1);
+                mpi::AsyncSend async_sender(layout, (num_procs-1)*50);
 
-                for(int dest = 1; dest < num_procs; ++dest) {
+                for (int dest = 1; dest < num_procs; ++dest) {
                     async_sender.wait();
                     auto& msg = async_sender.get_message();
-                    if (!cells_to_compute.pop(msg))
+                    if (!cells_per_worker[dest-1].pop(msg))
                         break;
                     async_sender.isend(dest);
                 }
@@ -82,13 +82,13 @@ int main (int argc, char *argv[]) {
 
                         #pragma omp task firstprivate(str_name, out_verts, out_faces)
                         {
-                            qems::export_mesh("out/" + str_name, recv_vertices, recv_faces);
+                            qems::export_mesh("out/" + str_name, out_verts, out_faces);
                         }
                     }
 
                     async_sender.wait();
                     auto& msg = async_sender.get_message();
-                    if (cells_to_compute.pop(msg)) {
+                    if (cells_per_worker[dest-1].pop(msg)) {
                         async_sender.isend(dest);
                     }
                 }
@@ -102,14 +102,13 @@ int main (int argc, char *argv[]) {
             {
                 #pragma omp taskgroup 
                 {
-                    int counter_file = 0;
+                    uint32_t counter_file = 0;
                     for (const auto file : fs::directory_iterator(INPUT)) {
                         if (!fs::is_regular_file(file.status()))
                             continue;
 
                         if (counter_file < NUM_MESHES) {
-                            counter_file++;
-                            #pragma omp task firstprivate(file)
+                            #pragma omp task firstprivate(file, counter_file)
                             {
                                 qems::MeshMetaData metadata;
                                 std::vector<float> vertices;
@@ -126,32 +125,37 @@ int main (int argc, char *argv[]) {
                                 uint32_t cell_id = 0;
                                 float total_faces = static_cast<float>(faces.size()/3);
                                 uint32_t final_target = static_cast<uint32_t>(std::floor(total_faces * TARGET));
+                                #pragma omp critical(file_ordering)
+                                {
+                                    for (auto &cell : uniform_grid) {
+                                        mpi::PackedMessage msg(layout);
 
-                                for (auto &cell : uniform_grid) {
-                                    mpi::PackedMessage msg(layout);
+                                        msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {START_PARTITIONS, START_PARTITIONS};
+                                        msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET) = { final_target };
 
-                                    msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {START_PARTITIONS, START_PARTITIONS};
-                                    msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET) = { final_target };
+                                        auto& bb = msg.get_element<double>(CSTM_TAG_BB);
+                                        bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
+                                        bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
 
-                                    auto& bb = msg.get_element<double>(CSTM_TAG_BB);
-                                    bb[0] = min.x(); bb[1] = min.y(); bb[2] = min.z();
-                                    bb[3] = max.x(); bb[4] = max.y(); bb[5] = max.z();
+                                        msg.get_element<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
+                                        msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {cell_id, cell_id, counter_file};
 
-                                    msg.get_element<char>(CSTM_TAG_NAME).assign(metadata.name.begin(), metadata.name.end());
-                                    msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {cell_id};
+                                        msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
+                                        msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
+                                        msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);
 
-                                    msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
-                                    msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
-                                    msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP) = std::move(cell.indices_mapping);
-
-                                    cells_to_compute.push(std::move(msg));
-                                    cell_id++;
+                                        uint32_t dest = get_dest(cell_id, START_PARTITIONS, num_procs-1);
+                                        cells_per_worker[dest].push(std::move(msg));
+                                        cell_id++;
+                                    }
                                 }
                             }
+                            counter_file++;
                         }
                     }
                 }
-                cells_to_compute.signal_finished();
+                for (int w = 0; w < num_procs-1; w++)
+                    cells_per_worker[w].signal_finished();
             }
         }
     }

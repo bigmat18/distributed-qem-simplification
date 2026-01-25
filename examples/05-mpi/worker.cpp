@@ -14,6 +14,7 @@
 
 #include "utils.hpp"
 
+
 int main (int argc, char *argv[]) {
     omlog().disable();
     omout().disable();
@@ -129,14 +130,18 @@ int main (int argc, char *argv[]) {
             };
 
         std::queue<mpi::PackedMessage> tasks;
+        bool master_task_recv = false;
         while(true) {
             uint32_t old_partitions;
             uint32_t new_partitions;
             std::string str_name;
 
             if (tasks.empty()) {
-                if(mpi::sync_recv(msg, MPI_ANY_SOURCE) == -1)
+                int source = mpi::sync_recv(msg, MPI_ANY_SOURCE);
+                if(source == -1)
                     break;
+
+                if (source == 0) master_task_recv = true;
 
                 min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2]; 
                 max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5]; 
@@ -166,6 +171,7 @@ int main (int argc, char *argv[]) {
 
             qems::row_data_to_mesh(vertices, faces, idx_mapping, mesh);
             {
+                PROFILING_SCOPE("PID:"+std::to_string(pid)+",Mesh:"+str_name);
                 mesh.update_normals();
                 std::vector<qems::QEMMesh::EdgeHandle> edges;
 
@@ -222,7 +228,7 @@ int main (int argc, char *argv[]) {
                 auto pq = qems::QEMPriorityQueue(qems::QEMEdgeCompare(mesh), edges);
                 uint32_t local_target;
                 if (new_partitions != 1) {
-                    local_target = static_cast<uint32_t>(std::floor(static_cast<float>(collasable_faces) * TARGET * 4));
+                    local_target = static_cast<uint32_t>(std::floor(static_cast<float>(collasable_faces) * TARGET));
                 } else {
                     local_target = final_target[0];
                 }
@@ -230,8 +236,10 @@ int main (int argc, char *argv[]) {
                 qems::simplification(mesh, local_target, collasable_faces, pq);
                 mesh.garbage_collection();
             }
+            PROFILING_PRINT();
             qems::mesh_to_row_data(mesh, vertices, faces, idx_mapping);
 
+            uint32_t file_id = id[2];
             uint32_t old_index = id[0];
             old_partitions = new_partitions;
             new_partitions = next_step(new_partitions);
@@ -268,7 +276,8 @@ int main (int argc, char *argv[]) {
                 for (int y = start_y; y <= end_y; y++) {
                     for (int z = start_z; z <= end_z; z++) {
                         uint32_t new_index = uniform_grid.get_cell_index(x, y, z); 
-                        uint32_t dest = (new_index % (num_procs - 1) + 1);
+                        uint32_t dest = get_dest(new_index, new_partitions, num_procs-1, file_id);
+                        dest++;
                         auto& cell = uniform_grid.cells()[new_index];
 
                         LOG_DEBUG("PID: {} receive: {} {} part: {}, send: {} ({}, {}, {}) part: {} dest: with verts: {}, faces: {}, mapping: {}", 
@@ -306,13 +315,18 @@ int main (int argc, char *argv[]) {
                 }
             }
 
-            async_sender.wait();
 
-            auto& request_msg = async_sender.get_message();
-            request_msg.get_buffer<float>(CSTM_TAG_VERT).clear();
-            request_msg.get_buffer<uint32_t>(CSTM_TAG_FACE).clear();
-            request_msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP).clear();
-            async_sender.isend(0); 
+            if (master_task_recv) {
+                async_sender.wait();
+
+                auto& request_msg = async_sender.get_message();
+                request_msg.get_buffer<float>(CSTM_TAG_VERT).clear();
+                request_msg.get_buffer<uint32_t>(CSTM_TAG_FACE).clear();
+                request_msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP).clear();
+                async_sender.isend(0); 
+                master_task_recv = false;
+
+            }
         }
     }
 
