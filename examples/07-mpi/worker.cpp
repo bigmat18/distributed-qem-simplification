@@ -12,6 +12,7 @@
 #include <utility>
 #include <utils.hpp>
 
+#include "logging.hpp"
 #include "utils.hpp"
 
 
@@ -26,12 +27,12 @@ int main (int argc, char *argv[]) {
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("p,partitions", "Start partitions", cxxopts::value<uint32_t>()->default_value("4"))
-        ("t,percent", "Target percent", cxxopts::value<uint32_t>()->default_value("10"));
+        ("t,percent", "Target percent", cxxopts::value<float>()->default_value("10.0"));
 
     auto result = options.parse(argc, argv);
-    const uint32_t    PERCENT           = result["percent"].as<uint32_t>();
+    const float       PERCENT           = result["percent"].as<float>();
     const uint32_t    START_PARTITIONS  = result["partitions"].as<uint32_t>();
-    const float       TARGET            = static_cast<float>(PERCENT) / 100;
+    const float       TARGET            = PERCENT / 100;
 
 	int pid, num_procs;
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
@@ -137,11 +138,10 @@ int main (int argc, char *argv[]) {
             std::string str_name;
 
             if (tasks.empty()) {
-                int source = mpi::sync_recv(msg, MPI_ANY_SOURCE);
-                if(source == -1)
+                //LOG_WARN("{} wait", pid);
+                if(mpi::sync_recv(msg, MPI_ANY_SOURCE) == -1)
                     break;
-
-                if (source == 0) master_task_recv = true;
+                //LOG_WARN("{} recv", pid);
 
                 min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2]; 
                 max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5]; 
@@ -246,7 +246,12 @@ int main (int argc, char *argv[]) {
             if (new_partitions == 0) {
                 async_sender.wait();
                 auto& final_msg = async_sender.get_message();
+                final_msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, old_index, file_id};
+                final_msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
+                final_msg.get_element<double>(CSTM_TAG_BB) = bb;
                 final_msg.get_element<char>(CSTM_TAG_NAME) = name;
+                final_msg.get_element<uint32_t>(CSTM_TAG_FINAL_TARGET) = final_target;
+
                 std::swap(final_msg.get_buffer<float>(CSTM_TAG_VERT), vertices);
                 std::swap(final_msg.get_buffer<uint32_t>(CSTM_TAG_FACE), faces);
                 std::swap(final_msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP), idx_mapping);
@@ -290,7 +295,7 @@ int main (int argc, char *argv[]) {
                             async_sender.wait();
 
                             auto& send_msg = async_sender.get_message();
-                            send_msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
+                            send_msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index, file_id};
                             send_msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
                             send_msg.get_element<double>(CSTM_TAG_BB) = bb;
                             send_msg.get_element<char>(CSTM_TAG_NAME) = name;
@@ -302,7 +307,7 @@ int main (int argc, char *argv[]) {
 
                             async_sender.isend(dest);
                         } else {
-                            msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index};
+                            msg.get_element<uint32_t>(CSTM_TAG_CELL_ID) = {old_index, new_index, file_id};
                             msg.get_element<uint32_t>(CSTM_TAG_CELL_PART_LVL) = {old_partitions, new_partitions};
                             msg.get_buffer<float>(CSTM_TAG_VERT) = std::move(cell.vertices);
                             msg.get_buffer<uint32_t>(CSTM_TAG_FACE) = std::move(cell.faces);
@@ -313,19 +318,6 @@ int main (int argc, char *argv[]) {
                         }
                     }
                 }
-            }
-
-
-            if (master_task_recv) {
-                async_sender.wait();
-
-                auto& request_msg = async_sender.get_message();
-                request_msg.get_buffer<float>(CSTM_TAG_VERT).clear();
-                request_msg.get_buffer<uint32_t>(CSTM_TAG_FACE).clear();
-                request_msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP).clear();
-                async_sender.isend(0); 
-                master_task_recv = false;
-
             }
         }
     }

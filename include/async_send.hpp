@@ -89,9 +89,9 @@ public:
         return messages_[active_buffer_idx_]; 
     }
 
-    inline void wait() {
+    inline int wait() {
         if (requests_.empty()) 
-            return;
+            return -1;
 
         int flag = 0;
         uint32_t search_idx = active_buffer_idx_;
@@ -111,6 +111,7 @@ public:
             }
         }
         waited = true;
+        return active_buffer_idx_;
     }
 };
 

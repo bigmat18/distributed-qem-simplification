@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <sys/time.h>
@@ -8,11 +9,18 @@
 #include <mpi.h>
 #include <utils.hpp>
 
-#include "logging.hpp"
 #include "mesh_import.hpp"
 #include "packed_message.hpp"
 #include "ug_row_data.hpp"
 #include "utils.hpp"
+
+inline uint32_t next_pow(uint32_t n) {
+    if (n == 0) return 1;
+    uint32_t p = 1;
+    while (p < n)
+        p = p * 2;
+    return p;
+}
 
 int main(int argc, char *argv[]) {
     omlog().disable();
@@ -27,27 +35,25 @@ int main(int argc, char *argv[]) {
         ("i,input", "Input Folder", cxxopts::value<std::string>())
         ("n,meshes", "Num meshes", cxxopts::value<uint32_t>())
         ("p,partitions", "Start partitions", cxxopts::value<uint32_t>()->default_value("4"))
-        ("t,percent", "Target percent", cxxopts::value<uint32_t>()->default_value("10"));
+        ("t,percent", "Target percent", cxxopts::value<float>()->default_value("10.0"));
  
     options.parse_positional({"input"});
     auto result = options.parse(argc, argv);
- 
 
     const std::string INPUT             = result["input"].as<std::string>();
-    const uint32_t    NUM_MESHES        = result["meshes"].as<uint32_t>();
-    const uint32_t    PERCENT           = result["percent"].as<uint32_t>();
-    const float       TARGET            = static_cast<float>(PERCENT) / 100;
-    const uint32_t    GLOBAL_PARTITIONS = 2;
+    const uint32_t    START_PARTITIONS  = result["partitions"].as<uint32_t>();
+    const float       PERCENT           = result["percent"].as<float>();
+    uint32_t          NUM_MESHES        = result["meshes"].as<uint32_t>();
+    const float       TARGET            = PERCENT / 100;
 
     massert(fs::exists("out") && fs::is_directory("out"), 
             "out folder does not exists");
-    massert(fs::exists(INPUT) && fs::is_directory(INPUT), 
-            "Input must be a valid folder");
 
 	int pid, num_procs;
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
+    const uint32_t GLOBAL_PARTITIONS = next_pow(std::ceil(std::cbrt(static_cast<float>(num_procs-1))));
     {
         mpi::MessageLayout layout = get_layout();
         mpi::MPMCQueue<mpi::PackedMessage> cells_per_worker;
@@ -160,11 +166,20 @@ int main(int argc, char *argv[]) {
             {
                 #pragma omp taskgroup 
                 {
-                    uint32_t counter_file = 0;
-                    for (const auto file : fs::directory_iterator(INPUT)) {
-                        if (!fs::is_regular_file(file.status()))
-                            continue;
+                    std::vector<fs::path> files;
+                    if (!fs::is_directory(INPUT)) {
+                        files.push_back(INPUT);
+                        NUM_MESHES = 1;
+                    } else {
+                        for (const auto file : fs::directory_iterator(INPUT)) {
+                            if (!fs::is_regular_file(file.status()))
+                                continue;
+                            files.push_back(file); 
+                        }
+                    }
 
+                    uint32_t counter_file = 0;
+                    for (const auto file : files) {
                         if (counter_file < NUM_MESHES) {
                             #pragma omp task firstprivate(file, counter_file)
                             {

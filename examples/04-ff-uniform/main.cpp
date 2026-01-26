@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
             mesh.update_normals();
         }
 
-        LOG_INFO("{} successfully imported", FILENAME.c_str());
+        LOG_DEBUG("{} successfully imported", FILENAME.c_str());
         uint32_t subdivision = START_PARTITIONS;
 
         while (subdivision > 0 && mesh.n_faces() > TARGET_FACES) {
@@ -93,77 +93,74 @@ int main(int argc, char **argv) {
                 uniform_grid = qems::UniformGrid(min, max, subdivision);
 
                 LOG_DEBUG("Start UniformGrid building");
-                {
-                    PROFILING_SCOPE("Uniform-Grid-Building");
-                    const qems::UniformGrid identity(uniform_grid);
+                const qems::UniformGrid identity(uniform_grid);
 
-                    pf_reduce.parallel_reduce(
-                        uniform_grid,      
-                        identity,     
-                        0, mesh.n_vertices(),
-                        [&](long i, qems::UniformGrid &local_grid) {
-                            auto vh = qems::QEMMesh::VertexHandle(i);
-                            mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                            uint32_t idx = local_grid.add_vertex(mesh, vh); 
-                            mesh.data(vh).NodeIdx = idx;
-                            mesh.data(vh).Collasable = true;
-                        },
-                        grid_merger
-                    );
+                pf_reduce.parallel_reduce(
+                    uniform_grid,      
+                    identity,     
+                    0, mesh.n_vertices(),
+                    [&](long i, qems::UniformGrid &local_grid) {
+                        auto vh = qems::QEMMesh::VertexHandle(i);
+                        mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
+                        uint32_t idx = local_grid.add_vertex(mesh, vh); 
+                        mesh.data(vh).NodeIdx = idx;
+                        mesh.data(vh).Collasable = true;
+                    },
+                    grid_merger
+                );
 
-                    pf_workers.parallel_for(0, mesh.n_edges(), [&](long i) {
+                pf_workers.parallel_for(0, mesh.n_edges(), [&](long i) {
+                    auto eh = qems::QEMMesh::EdgeHandle(i);
+                    auto heh = mesh.halfedge_handle(eh, 0);
+                    auto vh0 = mesh.from_vertex_handle(heh);
+                    auto vh1 = mesh.to_vertex_handle(heh);
+
+                    uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                    uint32_t idx1 = mesh.data(vh1).NodeIdx;
+
+                    if (idx0 != idx1) {
+                        mesh.data(vh0).Collasable = false;
+                        mesh.data(vh1).Collasable = false;
+                    } 
+                });
+
+                qems::UniformGrid edges_grid_temp(identity);
+                pf_reduce.parallel_reduce(
+                    edges_grid_temp,
+                    identity,
+                    0, mesh.n_edges(),
+                    [&](long i, qems::UniformGrid &local_grid) {
                         auto eh = qems::QEMMesh::EdgeHandle(i);
-                        auto heh = mesh.halfedge_handle(eh, 0);
-                        auto vh0 = mesh.from_vertex_handle(heh);
-                        auto vh1 = mesh.to_vertex_handle(heh);
+                        if(local_grid.add_edge(mesh, eh)) { 
+                            auto heh = mesh.halfedge_handle(eh, 0);
+                            auto vh0 = mesh.from_vertex_handle(heh);
+                            auto vh1 = mesh.to_vertex_handle(heh);
 
-                        uint32_t idx0 = mesh.data(vh0).NodeIdx;
-                        uint32_t idx1 = mesh.data(vh1).NodeIdx;
+                            Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                            Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
-                        if (idx0 != idx1) {
-                            mesh.data(vh0).Collasable = false;
-                            mesh.data(vh1).Collasable = false;
-                        } 
-                    });
+                            mesh.data(eh).Error = newV.transpose() * Q * newV;
+                            mesh.data(eh).NewVertex = newV;
+                        }
+                    },
+                    grid_merger
+                );
 
-                    qems::UniformGrid edges_grid_temp(identity);
-                    pf_reduce.parallel_reduce(
-                        edges_grid_temp,
-                        identity,
-                        0, mesh.n_edges(),
-                        [&](long i, qems::UniformGrid &local_grid) {
-                            auto eh = qems::QEMMesh::EdgeHandle(i);
-                            if(local_grid.add_edge(mesh, eh)) { 
-                                auto heh = mesh.halfedge_handle(eh, 0);
-                                auto vh0 = mesh.from_vertex_handle(heh);
-                                auto vh1 = mesh.to_vertex_handle(heh);
+                uniform_grid.merge(edges_grid_temp);
 
-                                Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
-                                Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
+                qems::UniformGrid faces_grid_temp(identity);
+                pf_reduce.parallel_reduce(
+                    faces_grid_temp, 
+                    identity,
+                    0, mesh.n_faces(),
+                    [&](long i, qems::UniformGrid &local_grid) {
+                        auto fh = qems::QEMMesh::FaceHandle(i);
+                        local_grid.increment_collasable_faces(mesh, fh);
+                    },
+                    grid_merger
+                );
 
-                                mesh.data(eh).Error = newV.transpose() * Q * newV;
-                                mesh.data(eh).NewVertex = newV;
-                            }
-                        },
-                        grid_merger
-                    );
-
-                    uniform_grid.merge(edges_grid_temp);
-
-                    qems::UniformGrid faces_grid_temp(identity);
-                    pf_reduce.parallel_reduce(
-                        faces_grid_temp, 
-                        identity,
-                        0, mesh.n_faces(),
-                        [&](long i, qems::UniformGrid &local_grid) {
-                            auto fh = qems::QEMMesh::FaceHandle(i);
-                            local_grid.increment_collasable_faces(mesh, fh);
-                        },
-                        grid_merger
-                    );
-
-                    uniform_grid.merge(faces_grid_temp);
-                }
+                uniform_grid.merge(faces_grid_temp);
             }
 
             LOG_DEBUG("Start Parallel QEM-Simplification");
@@ -194,13 +191,13 @@ int main(int argc, char **argv) {
             }
 
             subdivision = next_step(subdivision);
-            LOG_INFO("Parallel computation mesh vertices: {}, edges: {}, faces: {}", 
+            LOG_DEBUG("Parallel computation mesh vertices: {}, edges: {}, faces: {}", 
                       mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
         }
 
     }   
     massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
-    LOG_INFO("Mesh successfully exported!");
+    LOG_DEBUG("Mesh successfully exported!");
 
     PROFILING_PRINT();
     return 0;

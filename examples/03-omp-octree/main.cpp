@@ -11,6 +11,10 @@
 #include <octree.hpp>
 
 int main(int argc, char **argv) {
+    omlog().disable();
+    omout().disable();
+    omerr().disable();
+
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,filename", "Input filename list", cxxopts::value<std::string>())
@@ -61,7 +65,7 @@ int main(int argc, char **argv) {
             mesh.update_normals();
         }
 
-        LOG_INFO("{} successfully imported", FILENAME.c_str());
+        LOG_DEBUG("{} successfully imported", FILENAME.c_str());
         {
             PROFILING_SCOPE("Pre-Processing");
 
@@ -82,63 +86,57 @@ int main(int argc, char **argv) {
 
             LOG_DEBUG("Start Octree building");
 
-            PROFILING_LOCK();
             #pragma omp parallel reduction(octree_merge : octree)
             {
-                PROFILING_SCOPE("Octree-Building");
-                {
-                    #pragma omp for schedule(static) 
-                    for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-                        auto vh = qems::QEMMesh::VertexHandle(i);
-                        mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                        uint32_t idx = octree.add_vertex(mesh, vh);
-                        mesh.data(vh).NodeIdx = idx;
-                    }
+                #pragma omp for schedule(static) 
+                for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+                    auto vh = qems::QEMMesh::VertexHandle(i);
+                    mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
+                    uint32_t idx = octree.add_vertex(mesh, vh);
+                    mesh.data(vh).NodeIdx = idx;
+                }
 
-                    #pragma omp for schedule(static)  
-                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                        auto eh = qems::QEMMesh::EdgeHandle(i);
+                #pragma omp for schedule(static)  
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                    auto eh = qems::QEMMesh::EdgeHandle(i);
+                    auto heh = mesh.halfedge_handle(eh, 0);
+                    auto vh0 = mesh.from_vertex_handle(heh);
+                    auto vh1 = mesh.to_vertex_handle(heh);
+
+                    uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                    uint32_t idx1 = mesh.data(vh1).NodeIdx;
+
+                    if (idx0 != idx1) {
+                        mesh.data(vh0).Collasable = false;
+                        mesh.data(vh1).Collasable = false;
+
+                        set_neighborhood(vh0);
+                        set_neighborhood(vh1);
+                    } 
+                }
+
+                #pragma omp for schedule(static)
+                for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                    auto eh = qems::QEMMesh::EdgeHandle(i);
+                    if(octree.add_edge(mesh, eh)) {
                         auto heh = mesh.halfedge_handle(eh, 0);
                         auto vh0 = mesh.from_vertex_handle(heh);
                         auto vh1 = mesh.to_vertex_handle(heh);
 
-                        uint32_t idx0 = mesh.data(vh0).NodeIdx;
-                        uint32_t idx1 = mesh.data(vh1).NodeIdx;
+                        Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                        Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
-                        if (idx0 != idx1) {
-                            mesh.data(vh0).Collasable = false;
-                            mesh.data(vh1).Collasable = false;
-
-                            set_neighborhood(vh0);
-                            set_neighborhood(vh1);
-                        } 
-                    }
-
-                    #pragma omp for schedule(static)
-                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                        auto eh = qems::QEMMesh::EdgeHandle(i);
-                        if(octree.add_edge(mesh, eh)) {
-                            auto heh = mesh.halfedge_handle(eh, 0);
-                            auto vh0 = mesh.from_vertex_handle(heh);
-                            auto vh1 = mesh.to_vertex_handle(heh);
-
-                            Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
-                            Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
-
-                            mesh.data(eh).Error = newV.transpose() * Q * newV;
-                            mesh.data(eh).NewVertex = newV;
-                        }
-                    }
-
-                    #pragma omp for schedule(static)
-                    for(size_t i = 0; i < mesh.n_faces(); i++) {
-                        auto fh = qems::QEMMesh::FaceHandle(i);
-                        octree.increment_collasable_faces(mesh, fh);
+                        mesh.data(eh).Error = newV.transpose() * Q * newV;
+                        mesh.data(eh).NewVertex = newV;
                     }
                 }
 
+                #pragma omp for schedule(static)
+                for(size_t i = 0; i < mesh.n_faces(); i++) {
+                    auto fh = qems::QEMMesh::FaceHandle(i);
+                    octree.increment_collasable_faces(mesh, fh);
+                }
             }
-            PROFILING_UNLOCK();
 
             {
                 PROFILING_SCOPE("Octree-Normalization");
@@ -233,7 +231,7 @@ int main(int argc, char **argv) {
               mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
 
     massert(OpenMesh::IO::write_mesh(mesh, "out/octree.ply"), "Error in mesh export!");
-    LOG_INFO("Mesh successfully exported!");
+    LOG_DEBUG("Mesh successfully exported!");
 
     PROFILING_PRINT();
     return 0; 

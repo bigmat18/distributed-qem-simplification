@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
             mesh.update_normals();
         }
 
-        LOG_INFO("{} successfully imported", FILENAME.c_str());
+        LOG_DEBUG("{} successfully imported", FILENAME.c_str());
 
         std::vector<qems::QEMMesh::EdgeHandle> edges;
         {
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
               mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
 
     massert(OpenMesh::IO::write_mesh(mesh, "out/sequential.ply"), "Error in mesh export!");
-    LOG_INFO("Mesh successfully exported!");
+    LOG_DEBUG("Mesh successfully exported!");
 
     PROFILING_PRINT();
     return 0;

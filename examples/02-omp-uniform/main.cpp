@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
             mesh.update_normals();
         }
 
-        LOG_INFO("{} successfully imported", FILENAME.c_str());
+        LOG_DEBUG("{} successfully imported", FILENAME.c_str());
         uint32_t subdivision = START_PARTITIONS;
 
         while (subdivision > 0 && mesh.n_faces() > TARGET_FACES) {
@@ -88,63 +88,57 @@ int main(int argc, char **argv) {
 
                 LOG_DEBUG("Start UniformGrid building");
 
-                PROFILING_LOCK();
                 #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
                 {
-                    PROFILING_SCOPE("Uniform-Grid-Building");
-                    {
-                        #pragma omp for schedule(static) 
-                        for (size_t i = 0; i < mesh.n_vertices(); ++i) {
-                            auto vh = qems::QEMMesh::VertexHandle(i);
-                            mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                            uint32_t idx = uniform_grid.add_vertex(mesh, vh);
-                            mesh.data(vh).NodeIdx = idx;
-                            mesh.data(vh).Collasable = true;
-                        }
+                    #pragma omp for schedule(static) 
+                    for (size_t i = 0; i < mesh.n_vertices(); ++i) {
+                        auto vh = qems::QEMMesh::VertexHandle(i);
+                        mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
+                        uint32_t idx = uniform_grid.add_vertex(mesh, vh);
+                        mesh.data(vh).NodeIdx = idx;
+                        mesh.data(vh).Collasable = true;
+                    }
 
 
-                        #pragma omp for schedule(static)  
-                        for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                            auto eh = qems::QEMMesh::EdgeHandle(i);
+                    #pragma omp for schedule(static)  
+                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                        auto eh = qems::QEMMesh::EdgeHandle(i);
+                        auto heh = mesh.halfedge_handle(eh, 0);
+                        auto vh0 = mesh.from_vertex_handle(heh);
+                        auto vh1 = mesh.to_vertex_handle(heh);
+
+                        uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                        uint32_t idx1 = mesh.data(vh1).NodeIdx;
+
+                        if (idx0 != idx1) {
+                            mesh.data(vh0).Collasable = false;
+                            mesh.data(vh1).Collasable = false;
+                        } 
+                    }
+
+                    #pragma omp for schedule(static)
+                    for (size_t i = 0; i < mesh.n_edges(); ++i) {
+                        auto eh = qems::QEMMesh::EdgeHandle(i);
+
+                        if(uniform_grid.add_edge(mesh, eh)) {
                             auto heh = mesh.halfedge_handle(eh, 0);
                             auto vh0 = mesh.from_vertex_handle(heh);
                             auto vh1 = mesh.to_vertex_handle(heh);
 
-                            uint32_t idx0 = mesh.data(vh0).NodeIdx;
-                            uint32_t idx1 = mesh.data(vh1).NodeIdx;
+                            Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
+                            Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
 
-                            if (idx0 != idx1) {
-                                mesh.data(vh0).Collasable = false;
-                                mesh.data(vh1).Collasable = false;
-                            } 
-                        }
-
-                        #pragma omp for schedule(static)
-                        for (size_t i = 0; i < mesh.n_edges(); ++i) {
-                            auto eh = qems::QEMMesh::EdgeHandle(i);
-
-                            if(uniform_grid.add_edge(mesh, eh)) {
-                                auto heh = mesh.halfedge_handle(eh, 0);
-                                auto vh0 = mesh.from_vertex_handle(heh);
-                                auto vh1 = mesh.to_vertex_handle(heh);
-
-                                Eigen::Matrix4d Q = mesh.data(vh0).Quadric + mesh.data(vh1).Quadric;
-                                Eigen::Vector4d newV = qems::compute_new_best_vertex(mesh, eh, Q);
-
-                                mesh.data(eh).Error = newV.transpose() * Q * newV;
-                                mesh.data(eh).NewVertex = newV;
-                            }
-                        }
-
-                        #pragma omp for schedule(static)
-                        for(size_t i = 0; i < mesh.n_faces(); i++) {
-                            auto fh = qems::QEMMesh::FaceHandle(i);
-                            uniform_grid.increment_collasable_faces(mesh, fh);
+                            mesh.data(eh).Error = newV.transpose() * Q * newV;
+                            mesh.data(eh).NewVertex = newV;
                         }
                     }
 
+                    #pragma omp for schedule(static)
+                    for(size_t i = 0; i < mesh.n_faces(); i++) {
+                        auto fh = qems::QEMMesh::FaceHandle(i);
+                        uniform_grid.increment_collasable_faces(mesh, fh);
+                    }
                 }
-                PROFILING_UNLOCK();
             }
 
             LOG_DEBUG("Start Parallel QEM-Simplification");
@@ -174,13 +168,13 @@ int main(int argc, char **argv) {
             }
 
             subdivision = next_step(subdivision);
-            LOG_INFO("Parallel computation mesh vertices: {}, edges: {}, faces: {}", 
+            LOG_DEBUG("Parallel computation mesh vertices: {}, edges: {}, faces: {}", 
                       mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
         }
 
     }   
     massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
-    LOG_INFO("Mesh successfully exported!");
+    LOG_DEBUG("Mesh successfully exported!");
 
     PROFILING_PRINT();
     return 0;
