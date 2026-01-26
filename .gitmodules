@@ -12,3 +12,6 @@
 [submodule "external/cpp-utils-lib"]
 	path = external/cpp-utils-lib
 	url = https://github.com/bigmat18/cpp-utils-lib.git
+[submodule "external/fastflow"]
+	path = external/fastflow
+	url = https://github.com/fastflow/fastflow.git

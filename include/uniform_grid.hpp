@@ -63,6 +63,8 @@ public:
 
     std::size_t size() const { return cells_.size(); }
 
+    const std::vector<Cell>& cells() const { return cells_; }
+
 private:
     inline Vec4ui get_vertex_indices(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {
         auto coords = mesh.point(vh);

@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
     cxxopts::Options options("cli", "CLI app to test distributed mesh simplification");
     options.add_options()      
         ("i,filename", "Input filename list", cxxopts::value<std::string>())
+        ("t,threads", "Num threads", cxxopts::value<int>()->default_value("-1"))
         ("n,target", "Target faces", cxxopts::value<uint32_t>())
         ("w,wireframe", "Export wireframe", cxxopts::value<bool>()->default_value("false"));
 
@@ -26,9 +27,13 @@ int main(int argc, char **argv) {
     }
 
     massert(result.count("filename") >= 1, "Need [input filename]");
+    const int         NUM_THREAD      = result["threads"].as<int>();
     const std::string FILENAME        = result["filename"].as<std::string>();
     const uint32_t    TARGET_FACES    = result["target"].as<uint32_t>();
     const bool        EXPORT_WF       = result["wireframe"].as<bool>();
+
+    if (NUM_THREAD != -1)
+        omp_set_num_threads(NUM_THREAD);
 
     qems::MeshMetaData metadata;
     std::vector<float> vertices;

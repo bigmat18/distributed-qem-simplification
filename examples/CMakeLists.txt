@@ -5,12 +5,13 @@ set(EXAMPLES_MP
     01-sequential
     02-omp-uniform
     03-omp-octree
+    04-ff-uniform
 )
 
 set(EXAMPLES_MPI
-    04-mpi-omp
     05-mpi-omp
-    06-mpi
+    06-mpi-omp
+    07-mpi
 )
 
 foreach (subdir ${EXAMPLES_MP})
@@ -21,6 +22,7 @@ foreach (subdir ${EXAMPLES_MP})
 
         add_executable(${subdir} ${MAIN_FILE})
         target_link_libraries(${subdir} PUBLIC qems cxxopts)
+        target_include_directories(${subdir} PUBLIC "${EXTERNAL_DIR}/fastflow")
 
     else()
         message(STATUS "-- main.cpp don't exists in ${subdir}, skipped")

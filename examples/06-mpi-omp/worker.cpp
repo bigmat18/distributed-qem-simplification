@@ -1,3 +1,5 @@
+
+#include <algorithm>
 #include <cstdint>
 #include <sys/time.h>
 #include <unistd.h>
@@ -6,7 +8,9 @@
 #include <mpi.h>
 #include <utils.hpp>
 
-#include "profiling.hpp"
+#include <uniform_grid.hpp>
+#include "logging.hpp"
+#include "ug_row_data.hpp"
 #include "utils.hpp"
 
 int main(int argc, char **argv) {
@@ -24,10 +28,11 @@ int main(int argc, char **argv) {
  
     options.parse_positional({"input"});
     auto result = options.parse(argc, argv);
- 
+
     const uint32_t    START_PARTITIONS  = result["partitions"].as<uint32_t>();
     const uint32_t    PERCENT           = result["percent"].as<uint32_t>();
     const float       TARGET            = static_cast<float>(PERCENT) / 100;
+    const uint32_t    GLOBAL_PARTITIONS = 2;
 
 	int pid, num_procs;
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
@@ -36,10 +41,12 @@ int main(int argc, char **argv) {
     {
         mpi::MessageLayout layout = get_layout();
         mpi::PackedMessage msg(layout);
-        auto& name = msg.get_buffer<char>(CSTM_TAG_NAME);
-        auto& bb = msg.get_buffer<double>(CSTM_TAG_BB);
+        auto& id = msg.get_element<uint32_t>(CSTM_TAG_CELL_ID);
+        auto& name = msg.get_element<char>(CSTM_TAG_NAME);
+        auto& bb = msg.get_element<double>(CSTM_TAG_BB);
         auto& vertices = msg.get_buffer<float>(CSTM_TAG_VERT);
         auto& faces = msg.get_buffer<uint32_t>(CSTM_TAG_FACE);
+        auto& idx_mapping = msg.get_buffer<uint32_t>(CSTM_TAG_IDX_MAP);
 
         Eigen::Vector3d min, max;
         while (true) {
@@ -50,6 +57,11 @@ int main(int argc, char **argv) {
 
             min.x() = bb[0]; min.y() = bb[1]; min.z() = bb[2]; 
             max.x() = bb[3]; max.y() = bb[4]; max.z() = bb[5];
+
+            Eigen::Vector3d local_min, local_max;
+            auto local_bb = get_cell_bb(min, max, GLOBAL_PARTITIONS, id[0]);
+            local_min = std::move(local_bb.first);
+            local_max = std::move(local_bb.second);
 
             qems::QEMMesh mesh;
             qems::UniformGrid uniform_grid;
@@ -63,7 +75,7 @@ int main(int argc, char **argv) {
 
             {
                 PROFILING_SCOPE("PID:"+ std::to_string(pid) +",Mesh:" + str_name);
-                qems::row_data_to_mesh(vertices, faces, mesh);
+                qems::row_data_to_mesh(vertices, faces, idx_mapping, mesh);
                 mesh.update_normals();
 
                 const uint32_t TARGET_FACES = static_cast<uint32_t>(mesh.n_faces() * TARGET);
@@ -89,8 +101,7 @@ int main(int argc, char **argv) {
                         for (size_t i = 0; i < mesh.n_vertices(); ++i) {
                             auto vh = qems::QEMMesh::VertexHandle(i);
                             mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
-                            uint32_t idx = uniform_grid.add_vertex(mesh, vh);
-                            mesh.data(vh).NodeIdx = idx;
+                            mesh.data(vh).NodeIdx = uniform_grid.add_vertex(mesh, vh);
                             mesh.data(vh).Collasable = true;
                         }
 
@@ -101,13 +112,28 @@ int main(int argc, char **argv) {
                             auto vh0 = mesh.from_vertex_handle(heh);
                             auto vh1 = mesh.to_vertex_handle(heh);
 
-                            uint32_t idx0 = mesh.data(vh0).NodeIdx;
-                            uint32_t idx1 = mesh.data(vh1).NodeIdx;
+                            auto coords0 = mesh.point(vh0);
+                            auto coords1 = mesh.point(vh1);
+                            uint32_t global_idx0 = mpi::UniformGridRow::get_vertex_index(
+                                {coords0[0], coords0[1], coords0[2]}, min, max, GLOBAL_PARTITIONS
+                            );
+                            uint32_t global_idx1 = mpi::UniformGridRow::get_vertex_index(
+                                {coords1[0], coords1[1], coords1[2]}, min, max, GLOBAL_PARTITIONS
+                            );
 
-                            if (idx0 != idx1) {
+                            if (global_idx0 != global_idx1) {
                                 mesh.data(vh0).Collasable = false;
                                 mesh.data(vh1).Collasable = false;
-                            } 
+                            } else {
+                                uint32_t idx0 = mesh.data(vh0).NodeIdx;
+                                uint32_t idx1 = mesh.data(vh1).NodeIdx;
+
+                                if (idx0 != idx1) {
+                                    mesh.data(vh0).Collasable = false;
+                                    mesh.data(vh1).Collasable = false;
+                                } 
+                            }
+
                         }
 
                         #pragma omp for schedule(static)
@@ -155,7 +181,7 @@ int main(int argc, char **argv) {
             }
             PROFILING_PRINT();
 
-            qems::mesh_to_row_data(mesh, vertices, faces);
+            qems::mesh_to_row_data(mesh, vertices, faces, idx_mapping);
             mpi::sync_send(0, msg);
         }
     }

@@ -24,12 +24,13 @@ set(OPENMESH_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING             OFF CACHE BOOL "Disable tests for all deps (including Eigen)" FORCE)
 set(EIGEN_BUILD_DOC           OFF CACHE BOOL "Disable Eigen documentation"                  FORCE)
 
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -g")
+
 add_subdirectory(${EXTERNAL_DIR}/cpp-utils-lib)
 add_subdirectory(${EXTERNAL_DIR}/eigen)
 add_subdirectory(${EXTERNAL_DIR}/OpenMesh)
 add_subdirectory(${EXTERNAL_DIR}/cxxopts)
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -g")
 set(TARGET_LIB_NAME qems)
 file(GLOB_RECURSE CPP_FILES ${SRC_DIR}/*.cpp)
 add_library(${TARGET_LIB_NAME} ${CPP_FILES})
