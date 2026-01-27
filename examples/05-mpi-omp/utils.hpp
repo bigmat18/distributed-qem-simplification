@@ -8,6 +8,7 @@
 #include <message_layout.hpp>
 #include <packed_message.hpp>
 #include <uniform_grid.hpp>
+#include <mpmc_queue.hpp>
 
 #define CSTM_TAG_BB 1
 #define CSTM_TAG_VERT 2

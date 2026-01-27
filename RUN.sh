@@ -15,8 +15,7 @@ NUM_WORKER="4"
 NUM_WORKER_THREADS="1"
 NUM_MASTER_THREADS="4"
 
-PROFILE_MASTER=false
-PROFILE_WORKERS=false
+PROFILE_RECORD=false
 
 usage() {
   echo "Usage:"
@@ -34,8 +33,7 @@ usage() {
   echo "  -p NUM   : number of partitions (Default: 4)"
   echo "  -n NUM   : number of meshes (Default: 500)"
   echo "  -t NUM   : target percentage (Default: 10)"
-  echo "  -pm      : enable profiling on the master rank"
-  echo "  -pw      : enable profiling on the worker ranks"
+  echo "  -pr      : enable profiling"
   echo "  -h       : show this help message"
   exit 1
 }
@@ -79,12 +77,8 @@ while [ "$#" -gt 0 ]; do
       TARGET_PERCENT="$2"
       shift 2
       ;;
-    -pm)
-      PROFILE_MASTER=true
-      shift 1
-      ;;
-    -pw)
-      PROFILE_WORKERS=true
+    -pr)
+      PROFILE_RECORD=true
       shift 1
       ;;
     -h|--help)
@@ -111,38 +105,33 @@ map_build_type() {
 }
 
 TYPE_NAME="$(map_build_type "$TYPE")"
-
 BASE_PATH="build/${TYPE_NAME}/examples/${EXE}"
-MASTER_BIN="${BASE_PATH}/master"
-WORKER_BIN="${BASE_PATH}/worker"
-
+ARGS=("${INPUT_FOLDER}" -t "${TARGET_PERCENT}" -n "${NUM_MESHES}" -p "${PARTITIONS}")
 
 mkdir -p perf
 
-MASTER_ARGS=("${INPUT_FOLDER}" -t "${TARGET_PERCENT}" -n "${NUM_MESHES}" -p "${PARTITIONS}")
-WORKER_ARGS=(-p "${PARTITIONS}")
-
-if $PROFILE_MASTER; then
-    MASTER_CMD=("perf" "record" "-g" "-o" "perf/${EXE}-master.perf.data" "${MASTER_BIN}" "${MASTER_ARGS[@]}")
-else
-    MASTER_CMD=("${MASTER_BIN}" "${MASTER_ARGS[@]}")
-fi
-
-if $PROFILE_WORKERS; then
-    WORKER_CMD=(
+if $PROFILE_RECORD; then
+    LAUNCH_CMD=(
         "sh" "-c"
-        "perf record -m 4 -g -o perf/${EXE}-worker-rank-\${OMPI_COMM_WORLD_RANK}.perf.data ${WORKER_BIN} ${WORKER_ARGS[*]}"
+        "perf record -m 4 -g -o perf/${EXE}-rank-\${OMPI_COMM_WORLD_RANK}.perf.data ${BASE_PATH} ${ARGS[*]}"
     )
 else
-    WORKER_CMD=("${WORKER_BIN}" "${WORKER_ARGS[@]}")
+    LAUNCH_CMD=("${BASE_PATH}" "${ARGS[@]}")
 fi
 
+TOTAL_CPUS=$(nproc)
+TOTAL_THREADS=$(( NUM_MASTER_THREADS + NUM_WORKER_THREADS * NUM_WORKER ))
+if (( TOTAL_THREADS > TOTAL_CPUS )); then
+  echo "Warning: requested OpenMP threads (${TOTAL_THREADS}) exceed available logical CPUs (${TOTAL_CPUS})." >&2
+  echo "  NUM_MASTER_THREADS = ${NUM_MASTER_THREADS}" >&2
+  echo "  NUM_WORKER_THREADS = ${NUM_WORKER_THREADS}" >&2
+  echo "  NUM_WORKER         = ${NUM_WORKER}" >&2
+  exit 1
+fi
 
-time -p mpirun --use-hwthread-cpus --bynode --bind-to none --report-bindings --allow-run-as-root\
-  -np 1 \
-    -x OMP_NUM_THREADS="${NUM_MASTER_THREADS}" \
-    "${MASTER_CMD[@]}" \
-  : \
-  -np "${NUM_WORKER}" \
-    -x OMP_NUM_THREADS="${NUM_WORKER_THREADS}" \
-    "${WORKER_CMD[@]}"
+NUM_PROCS=$((NUM_WORKER + 1))
+time -p mpirun --use-hwthread-cpus --bynode --bind-to none --report-bindings --allow-run-as-root \
+  -np "${NUM_PROCS}" \
+  -x OMP_NUM_THREADS_MASTER="${NUM_MASTER_THREADS}" \
+  -x OMP_NUM_THREADS_WORKER="${NUM_WORKER_THREADS}" \
+  "${LAUNCH_CMD[@]}"

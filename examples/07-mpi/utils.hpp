@@ -11,6 +11,7 @@
 #include <packed_message.hpp>
 #include <async_send.hpp>
 #include <sync_send_recv.hpp>
+#include <mpmc_queue.hpp>
 
 #define CSTM_TAG_BB 1
 #define CSTM_TAG_VERT 2

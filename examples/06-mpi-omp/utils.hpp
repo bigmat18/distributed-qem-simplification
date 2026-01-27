@@ -11,6 +11,7 @@
 #include <async_send.hpp>
 #include <sync_send_recv.hpp>
 #include <mpmc_queue.hpp>
+#include <uniform_grid.hpp>
 
 #define CSTM_TAG_NAME 1
 #define CSTM_TAG_CELL_ID 2
@@ -38,6 +39,15 @@ inline auto get_layout() {
 inline int next_step(int n) {
     if (n == 1) return 0;
     return (n % 2 != 0) ? (n - 1) / 2 : (n > 4 ? n / 2 + 1 : 1);
+}
+
+
+inline uint32_t next_pow(uint32_t n) {
+    if (n == 0) return 1;
+    uint32_t p = 1;
+    while (p < n)
+        p = p * 2;
+    return p;
 }
 
 using BoundingBox = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
