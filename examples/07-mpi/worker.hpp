@@ -150,7 +150,7 @@ inline void Main_Worker(int pid, int num_procs,
 
         qems::row_data_to_mesh(vertices, faces, idx_mapping, mesh);
         {
-            PROFILING_SCOPE("PID:"+std::to_string(pid)+",Mesh:"+str_name);
+            // PROFILING_SCOPE("PID:"+std::to_string(pid)+",Mesh:"+str_name);
             mesh.update_normals();
             std::vector<qems::QEMMesh::EdgeHandle> edges;
 
@@ -215,7 +215,7 @@ inline void Main_Worker(int pid, int num_procs,
             qems::simplification(mesh, local_target, collasable_faces, pq);
             mesh.garbage_collection();
         }
-        PROFILING_PRINT();
+        // PROFILING_PRINT();
         qems::mesh_to_row_data(mesh, vertices, faces, idx_mapping);
 
         uint32_t file_id = id[2];

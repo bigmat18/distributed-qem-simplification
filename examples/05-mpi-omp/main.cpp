@@ -1,6 +1,5 @@
 #include <cxxopts.hpp>
 #include <mpi.h>
-#include <print>
 #include <utils.hpp>
 
 #include "master.hpp"
@@ -51,9 +50,9 @@ int main(int argc, char **argv) {
 
     double end_time = MPI_Wtime();
     double elapsed_time = end_time - start_time;
-    if (pid == 0)
-        std::println("time: {:.2f}", elapsed_time);
     MPI_Barrier(MPI_COMM_WORLD);
+    if (pid == 0)
+        std::cout << "time: " << std::fixed << std::setprecision(2) << elapsed_time << std::endl;
 
     MPI_Finalize();
     return 0;

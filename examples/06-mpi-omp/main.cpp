@@ -3,7 +3,6 @@
 
 #include <mpi.h>
 #include <omp.h>
-#include <print>
 #include <utils.hpp>
 
 #include "utils.hpp"
@@ -66,7 +65,7 @@ int main(int argc, char *argv[]) {
     double elapsed_time = end_time - start_time;
     MPI_Barrier(MPI_COMM_WORLD);
     if (pid == 0)
-        std::println("time: {:.2f}", elapsed_time);
+        std::cout << "time: " << std::fixed << std::setprecision(2) << elapsed_time << std::endl;
 
     //double max_time = 0.0f;
     //MPI_Reduce(&elapsed_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);

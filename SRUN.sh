@@ -103,12 +103,10 @@ ARGS=("${INPUT_FOLDER}" -t "${TARGET_PERCENT}" -n "${NUM_MESHES}" -p "${PARTITIO
 LAUNCH_CMD=("${BASE_PATH}" "${ARGS[@]}")
 
 NUM_PROCS=$((NUM_WORKER + 1))
+
 export OMP_NUM_THREADS_MASTER="${NUM_MASTER_THREADS}"
 export OMP_NUM_THREADS_WORKER="${NUM_WORKER_THREADS}"
 
-time -p srun \
+time -p srun --mpi=pmix \
   --ntasks="${NUM_PROCS}" \
-  --cpus-per-task="${NUM_WORKER_THREADS}" \
-  --distribution=block:block \
-  --hint=nomultithread \
   "${LAUNCH_CMD[@]}"

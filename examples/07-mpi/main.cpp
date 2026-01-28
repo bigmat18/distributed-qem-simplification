@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <mpi.h>
 #include <omp.h>
-#include <print>
 #include <utils.hpp>
 
 #include "master_v1.hpp"
@@ -44,7 +43,6 @@ int main(int argc, char *argv[]) {
 	MPI_Comm_size(MPI_COMM_WORLD,&num_procs); 
 	MPI_Comm_rank(MPI_COMM_WORLD,&pid); 
 
-
     if (pid == 0) {
         const char* env = std::getenv("OMP_NUM_THREADS_MASTER");
         omp_set_num_threads(atoi(env));
@@ -62,7 +60,7 @@ int main(int argc, char *argv[]) {
     double elapsed_time = end_time - start_time;
     MPI_Barrier(MPI_COMM_WORLD);
     if (pid == 0)
-        std::println("time {:.2f}", elapsed_time);
+        std::cout << "time: " << std::fixed << std::setprecision(2) << elapsed_time << std::endl;
 
     //double max_time = 0.0f;
     //MPI_Reduce(&elapsed_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
