@@ -88,13 +88,16 @@ int main(int argc, char **argv) {
             PROFILING_SCOPE("Mesh Cleanup");
             mesh.garbage_collection();
         }
-    }
 
-    LOG_DEBUG("Mesh vertices: {}, edges: {}, faces: {}", 
+        LOG_DEBUG("Mesh vertices: {}, edges: {}, faces: {}", 
               mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
 
-    massert(OpenMesh::IO::write_mesh(mesh, "out/sequential.ply"), "Error in mesh export!");
-    LOG_DEBUG("Mesh successfully exported!");
+        {
+            PROFILING_SCOPE("Export-Mesh");
+            massert(OpenMesh::IO::write_mesh(mesh, "out/sequential.ply"), "Error in mesh export!");
+            LOG_DEBUG("Mesh successfully exported!");
+        }
+    }
 
     PROFILING_PRINT();
     return 0;

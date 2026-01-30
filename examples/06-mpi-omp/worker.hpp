@@ -26,8 +26,12 @@ inline void Main_Worker(int pid, int num_procs,
 
     Eigen::Vector3d min, max;
     while (true) {
-        if (mpi::sync_recv(msg, 0) == -1) 
-            break;
+        {
+            PROFILING_SCOPE("PID:"+ std::to_string(pid) +",waiting for mesh");
+            if (mpi::sync_recv(msg, 0) == -1) 
+                break;
+        }
+        PROFILING_PRINT();
 
         std::string str_name(name.data(), name.size());
 

@@ -1,9 +1,0 @@
-salloc --nodes=8 --ntasks=32 --time=00:30:00
-
-for N in 1 2 3 4 5 6 7; do
-    ./SRUN.sh release 06-mpi-omp -i /home/m.giuntoni3/stanford/stanford_lucy.ply -p 32 -nw $N -mt 32 -wt 32 -n 0.1 > $N_06-mpi-omp.txt
-done
-
-for N in 16 32 64 128 256; do
-    ./SRUN.sh release 07-mpi -i /home/m.giuntoni3/stanford/stanford_lucy.ply -p 16 -nw 224 -mt 1 -wt 1 -n 0.1 > $N_07-mpi.txt
-done

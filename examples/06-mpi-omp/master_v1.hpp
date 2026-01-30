@@ -89,6 +89,7 @@ inline void Main_Master_V1(int pid, int num_procs,
     }
 
     {
+        PROFILING_SCOPE("PID:"+ std::to_string(pid) +", merging cells");
         auto& name = mesh_cells[0].get_element<char>(CSTM_TAG_NAME);
         std::string str_name(name.data(), name.size());
         auto& bb = mesh_cells[0].get_element<double>(CSTM_TAG_BB);
@@ -148,6 +149,7 @@ inline void Main_Master_V1(int pid, int num_procs,
 
         qems::export_mesh("out/"+str_name, out_vertices, out_faces);
     }
+    PROFILING_PRINT();
     
     mpi::PackedMessage final_msg;
     for (int w = 1; w < num_procs; ++w)

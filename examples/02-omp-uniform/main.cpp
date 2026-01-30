@@ -172,9 +172,13 @@ int main(int argc, char **argv) {
                       mesh.n_vertices(), mesh.n_edges(), mesh.n_faces());
         }
 
-    }   
-    massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
-    LOG_DEBUG("Mesh successfully exported!");
+        {
+            PROFILING_SCOPE("Export-Mesh");
+            massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
+            LOG_DEBUG("Mesh successfully exported!");
+        }
+
+    }
 
     PROFILING_PRINT();
     return 0;
