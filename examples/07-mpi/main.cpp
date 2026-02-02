@@ -62,12 +62,6 @@ int main(int argc, char *argv[]) {
     if (pid == 0)
         std::cout << "time: " << std::fixed << std::setprecision(2) << elapsed_time << std::endl;
 
-    //double max_time = 0.0f;
-    //MPI_Reduce(&elapsed_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-
-    //if (pid == 0)
-        //std::println("time: {}", max_time);
-
     MPI_Finalize();
     return 0;
 }
