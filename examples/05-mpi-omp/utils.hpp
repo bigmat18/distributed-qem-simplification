@@ -7,7 +7,8 @@
 #include <sync_send_recv.hpp>
 #include <message_layout.hpp>
 #include <packed_message.hpp>
-#include <uniform_grid.hpp>
+#include <uniform_grid_row.hpp>
+#include <uniform_grid_qem.hpp>
 #include <mpmc_queue.hpp>
 
 #define CSTM_TAG_BB 1

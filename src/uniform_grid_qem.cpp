@@ -2,11 +2,11 @@
 #include <cstdint>
 
 #include <qem_mesh.hpp>
-#include <uniform_grid.hpp>
+#include <uniform_grid_qem.hpp>
 
 namespace qems {
     
-uint32_t UniformGrid::add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {
+uint32_t UniformGridQEM::add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {
     massert(!mesh.status(vh).deleted(), "Vertex Deleted");
     massert(mesh.is_valid_handle(vh), "Vertex Handle not valid");
 
@@ -15,7 +15,7 @@ uint32_t UniformGrid::add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh) 
     return indices.w();
 }
 
-bool UniformGrid::add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh) {
+bool UniformGridQEM::add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh) {
     massert(!mesh.status(eh).deleted(), "Edge Deleted");
     massert(mesh.is_valid_handle(eh), "Edge Handle not valid");
  
@@ -31,7 +31,7 @@ bool UniformGrid::add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh) {
     return false;
 }
 
-bool UniformGrid::increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceHandle fh) {
+bool UniformGridQEM::increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceHandle fh) {
     massert(!mesh.status(fh).deleted(), "Face Deleted");
     massert(mesh.is_valid_handle(fh), "Face Handle not valid");
 
@@ -48,7 +48,7 @@ bool UniformGrid::increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceH
     return true;
 }
 
-void UniformGrid::merge(const UniformGrid& other) {
+void UniformGridQEM::merge(const UniformGridQEM& other) {
     for (int i = 0; i < cells_.size(); ++i) {
         cells_[i].vertices.insert(
             cells_[i].vertices.end(),

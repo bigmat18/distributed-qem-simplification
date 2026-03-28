@@ -8,7 +8,7 @@
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
 #include <mesh_import.hpp>
-#include <uniform_grid.hpp>
+#include <uniform_grid_qem.hpp>
 #include <utils.hpp>
 
 inline int next_step(int n) {
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     Eigen::Vector3d &max = metadata.max_coords;
 
     qems::QEMMesh mesh;
-    qems::UniformGrid uniform_grid;
+    qems::UniformGridQEM uniform_grid;
 
     mesh.request_vertex_status();
     mesh.request_edge_status();
@@ -80,13 +80,13 @@ int main(int argc, char **argv) {
             {
                 PROFILING_SCOPE("Pre-Processing");
 
-                uniform_grid = qems::UniformGrid(min, max, subdivision);
+                uniform_grid = qems::UniformGridQEM(min, max, subdivision);
                 #pragma omp declare reduction(                                      \
-                    uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
-                    initializer(omp_priv = qems::UniformGrid(omp_orig)              \
+                    uniform_grid_merge : qems::UniformGridQEM : omp_out.merge(omp_in)) \
+                    initializer(omp_priv = qems::UniformGridQEM(omp_orig)              \
                 )
 
-                LOG_DEBUG("Start UniformGrid building");
+                LOG_DEBUG("Start UniformGridQEM building");
 
                 #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)
                 {
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 
         {
             PROFILING_SCOPE("Export-Mesh");
-            massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
+            massert(OpenMesh::IO::write_mesh(mesh, "out/" + metadata.name), "Error in mesh export!");
             LOG_DEBUG("Mesh successfully exported!");
         }
 

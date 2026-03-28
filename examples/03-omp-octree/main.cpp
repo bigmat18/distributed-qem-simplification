@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
 
         {
             PROFILING_SCOPE("Export-Mesh");
-            massert(OpenMesh::IO::write_mesh(mesh, "out/octree.ply"), "Error in mesh export!");
+            massert(OpenMesh::IO::write_mesh(mesh, "out/" + metadata.name), "Error in mesh export!");
             LOG_DEBUG("Mesh successfully exported!");
         }
     }

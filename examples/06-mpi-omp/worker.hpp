@@ -44,7 +44,7 @@ inline void Main_Worker(int pid, int num_procs,
         local_max = std::move(local_bb.second);
 
         qems::QEMMesh mesh;
-        qems::UniformGrid uniform_grid;
+        qems::UniformGridQEM uniform_grid;
 
         mesh.request_vertex_status();
         mesh.request_edge_status();
@@ -68,11 +68,11 @@ inline void Main_Worker(int pid, int num_procs,
 
             uint32_t subdivision = START_PARTITIONS;
             while (subdivision > 0 && mesh.n_faces() > TARGET_FACES) {
-                uniform_grid = qems::UniformGrid(min, max, subdivision);
+                uniform_grid = qems::UniformGridQEM(min, max, subdivision);
 
                 #pragma omp declare reduction(                                      \
-                    uniform_grid_merge : qems::UniformGrid : omp_out.merge(omp_in)) \
-                    initializer(omp_priv = qems::UniformGrid(omp_orig))
+                    uniform_grid_merge : qems::UniformGridQEM : omp_out.merge(omp_in)) \
+                    initializer(omp_priv = qems::UniformGridQEM(omp_orig))
 
 
                 #pragma omp parallel reduction(uniform_grid_merge : uniform_grid)

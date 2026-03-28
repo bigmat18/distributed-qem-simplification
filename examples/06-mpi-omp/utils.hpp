@@ -4,14 +4,14 @@
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
 #include <qem_mesh.hpp>
-#include <ug_row_data.hpp>
 #include <mesh_import.hpp>
 #include <message_layout.hpp>
 #include <packed_message.hpp>
 #include <async_send.hpp>
 #include <sync_send_recv.hpp>
 #include <mpmc_queue.hpp>
-#include <uniform_grid.hpp>
+#include <uniform_grid_row.hpp>
+#include <uniform_grid_qem.hpp>
 
 #define CSTM_TAG_NAME 1
 #define CSTM_TAG_CELL_ID 2

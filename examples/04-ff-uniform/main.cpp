@@ -8,7 +8,7 @@
 #include <qem_mesh.hpp>
 #include <qem_simp.hpp>
 #include <mesh_import.hpp>
-#include <uniform_grid.hpp>
+#include <uniform_grid_qem.hpp>
 #include <utils.hpp>
 
 #include <ff/ff.hpp>
@@ -57,11 +57,11 @@ int main(int argc, char **argv) {
     Eigen::Vector3d &max = metadata.max_coords;
 
     qems::QEMMesh mesh;
-    qems::UniformGrid uniform_grid;
-    ff::ParallelForReduce<qems::UniformGrid> pf_reduce(NUM_THREAD);
+    qems::UniformGridQEM uniform_grid;
+    ff::ParallelForReduce<qems::UniformGridQEM> pf_reduce(NUM_THREAD);
     ff::ParallelFor pf_workers(NUM_THREAD);
 
-    auto grid_merger = [](qems::UniformGrid &global_acc, const qems::UniformGrid &partial_acc) {
+    auto grid_merger = [](qems::UniformGridQEM &global_acc, const qems::UniformGridQEM &partial_acc) {
         global_acc.merge(partial_acc);
     };
 
@@ -90,16 +90,16 @@ int main(int argc, char **argv) {
             {
                 PROFILING_SCOPE("Pre-Processing");
 
-                uniform_grid = qems::UniformGrid(min, max, subdivision);
+                uniform_grid = qems::UniformGridQEM(min, max, subdivision);
 
-                LOG_DEBUG("Start UniformGrid building");
-                const qems::UniformGrid identity(uniform_grid);
+                LOG_DEBUG("Start UniformGridQEM building");
+                const qems::UniformGridQEM identity(uniform_grid);
 
                 pf_reduce.parallel_reduce(
                     uniform_grid,      
                     identity,     
                     0, mesh.n_vertices(),
-                    [&](long i, qems::UniformGrid &local_grid) {
+                    [&](long i, qems::UniformGridQEM &local_grid) {
                         auto vh = qems::QEMMesh::VertexHandle(i);
                         mesh.data(vh).Quadric = qems::compute_vertex_quadratic(mesh, vh);
                         uint32_t idx = local_grid.add_vertex(mesh, vh); 
@@ -124,12 +124,12 @@ int main(int argc, char **argv) {
                     } 
                 });
 
-                qems::UniformGrid edges_grid_temp(identity);
+                qems::UniformGridQEM edges_grid_temp(identity);
                 pf_reduce.parallel_reduce(
                     edges_grid_temp,
                     identity,
                     0, mesh.n_edges(),
-                    [&](long i, qems::UniformGrid &local_grid) {
+                    [&](long i, qems::UniformGridQEM &local_grid) {
                         auto eh = qems::QEMMesh::EdgeHandle(i);
                         if(local_grid.add_edge(mesh, eh)) { 
                             auto heh = mesh.halfedge_handle(eh, 0);
@@ -148,12 +148,12 @@ int main(int argc, char **argv) {
 
                 uniform_grid.merge(edges_grid_temp);
 
-                qems::UniformGrid faces_grid_temp(identity);
+                qems::UniformGridQEM faces_grid_temp(identity);
                 pf_reduce.parallel_reduce(
                     faces_grid_temp, 
                     identity,
                     0, mesh.n_faces(),
-                    [&](long i, qems::UniformGrid &local_grid) {
+                    [&](long i, qems::UniformGridQEM &local_grid) {
                         auto fh = qems::QEMMesh::FaceHandle(i);
                         local_grid.increment_collasable_faces(mesh, fh);
                     },
@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
 
         {
             PROFILING_SCOPE("Export-Mesh");
-            massert(OpenMesh::IO::write_mesh(mesh, "out/uniform_grid.ply"), "Error in mesh export!");
+            massert(OpenMesh::IO::write_mesh(mesh, "out/"+metadata.name), "Error in mesh export!");
             LOG_DEBUG("Mesh successfully exported!");   
         }
 

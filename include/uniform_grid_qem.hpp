@@ -10,7 +10,7 @@
 
 namespace qems {
 
-class UniformGrid {
+class UniformGridQEM {
     using Vec4ui = Eigen::Matrix<uint32_t, 4, 1>;
 
     struct Cell {
@@ -32,13 +32,13 @@ public:
     using iterator        = std::vector<Cell>::iterator;
     using const_iterator  = std::vector<Cell>::const_iterator;
 
-    UniformGrid() = default;
+    UniformGridQEM() = default;
 
-    UniformGrid(Eigen::Vector3d min_coords, Eigen::Vector3d max_coords, uint32_t num_split = 4) : 
+    UniformGridQEM(Eigen::Vector3d min_coords, Eigen::Vector3d max_coords, uint32_t num_split = 4) : 
         min_coords_(min_coords), max_coords_(max_coords), num_split_(num_split),
         cells_(num_split_ * num_split_ * num_split_) {};
 
-    UniformGrid(const UniformGrid& other) :
+    UniformGridQEM(const UniformGridQEM& other) :
         min_coords_(other.min_coords_), max_coords_(other.max_coords_), 
         num_split_(other.num_split_),
         cells_(num_split_ * num_split_ * num_split_) {};
@@ -49,7 +49,7 @@ public:
 
     bool increment_collasable_faces(const QEMMesh& mesh, QEMMesh::FaceHandle fh);
 
-    void merge(const UniformGrid& other);
+    void merge(const UniformGridQEM& other);
 
     inline uint32_t total_collasable_faces() const { return total_collasable_faces_; }
 
