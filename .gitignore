@@ -47,3 +47,4 @@ stanford/
 perf/
 .venv/
 vclab/
+.DS_Store

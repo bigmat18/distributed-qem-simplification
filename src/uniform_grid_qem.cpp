@@ -6,12 +6,14 @@
 
 namespace qems {
     
-uint32_t UniformGridQEM::add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh) {
+uint32_t UniformGridQEM::add_vertex(QEMMesh& mesh, QEMMesh::VertexHandle vh) {
     massert(!mesh.status(vh).deleted(), "Vertex Deleted");
     massert(mesh.is_valid_handle(vh), "Vertex Handle not valid");
 
     auto indices = get_vertex_indices(mesh, vh);
     cells_[indices.w()].vertices.push_back(vh);
+    uint32_t mult = 256 / num_split_;
+    mesh.set_color(vh, QEMMesh::Color(indices.x() * mult, indices.y()  * mult, indices.z()  * mult));
     return indices.w();
 }
 

@@ -43,7 +43,7 @@ public:
         num_split_(other.num_split_),
         cells_(num_split_ * num_split_ * num_split_) {};
 
-    uint32_t add_vertex(const QEMMesh& mesh, QEMMesh::VertexHandle vh);
+    uint32_t add_vertex(QEMMesh& mesh, QEMMesh::VertexHandle vh);
 
     bool add_edge(const QEMMesh& mesh, QEMMesh::EdgeHandle eh);
 

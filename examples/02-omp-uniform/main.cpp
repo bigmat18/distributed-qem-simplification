@@ -57,6 +57,7 @@ int main(int argc, char **argv) {
     qems::UniformGridQEM uniform_grid;
 
     mesh.request_vertex_status();
+    mesh.request_vertex_colors();
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_halfedge_status();
@@ -140,6 +141,10 @@ int main(int argc, char **argv) {
                     }
                 }
             }
+
+            OpenMesh::IO::Options opt;
+            opt += OpenMesh::IO::Options::VertexColor;
+            massert(OpenMesh::IO::write_mesh(mesh, "out/" + std::to_string(subdivision) + "_" + metadata.name, opt), "Error in mesh export!");
 
             LOG_DEBUG("Start Parallel QEM-Simplification");
             {

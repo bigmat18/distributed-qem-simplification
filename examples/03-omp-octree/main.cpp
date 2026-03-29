@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
         {
             PROFILING_SCOPE("Pre-Processing");
 
-            uint32_t limit = mesh.n_vertices() / omp_get_max_threads();
+            uint32_t limit = mesh.n_vertices() / (omp_get_max_threads() * 2);
             octree = qems::Octree(min, max, limit);
             #pragma omp declare reduction(                           \
                 octree_merge : qems::Octree : omp_out.merge(omp_in)) \

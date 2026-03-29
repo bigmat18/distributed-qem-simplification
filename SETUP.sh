@@ -25,7 +25,7 @@ setup() {
 
     echo "==> Configuring $CMAKE_TYPE in $DIR"
     mkdir -p "$DIR"
-    cmake -B "$DIR" -DCMAKE_BUILD_TYPE="${CMAKE_TYPE}" . ${FLAGS}
+    cmake -B "$DIR" -DCMAKE_BUILD_TYPE="${CMAKE_TYPE}" -DCMAKE_CXX_COMPILER="/opt/homebrew/opt/llvm/bin/clang++" . ${FLAGS}
 
     cd "$ROOT_DIR"
     ln -sf "$CMAKE_TYPE/compile_commands.json" compile_commands.json
